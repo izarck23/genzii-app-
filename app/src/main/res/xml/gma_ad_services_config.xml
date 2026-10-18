@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ad-services-config>
+    <attribution allowAdPartners="false" allowAllToAccess="false" />
+    <topics allowAdPartners="false" allowAllToAccess="false" />
+</ad-services-config>

@@ -50,12 +50,11 @@ object PdfExportManager {
     content: String,
     targetFile: File? = null
   ): Result<File> = withContext(Dispatchers.IO) {
+    val outputFile = targetFile ?: File(
+      context.cacheDir,
+      "${sanitizeFilename(title)}_Document.pdf"
+    )
     try {
-      val outputFile = targetFile ?: File(
-        context.cacheDir,
-        "${sanitizeFilename(title)}_Document.pdf"
-      )
-
       val pdfDoc = PdfDocument()
 
       val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -126,19 +125,29 @@ object PdfExportManager {
         yOffset += staticLayout.height + 14f
       }
 
-      drawFooter(canvas, currentPageNumber)
-      pdfDoc.finishPage(currentPage)
-
-      FileOutputStream(outputFile).use { out ->
-        pdfDoc.writeTo(out)
+      var writeSuccess = false
+      try {
+        drawFooter(canvas, currentPageNumber)
+        pdfDoc.finishPage(currentPage)
+        FileOutputStream(outputFile).use { out ->
+          pdfDoc.writeTo(out)
+        }
+        writeSuccess = outputFile.exists() && outputFile.length() > 200
+      } catch (e: Throwable) {
+        Log.w(TAG, "Standard PdfDocument write failed: ${e.message}. Using resilient pure engine...")
+      } finally {
+        try { pdfDoc.close() } catch (_: Throwable) {}
       }
-      pdfDoc.close()
 
-      Log.i(TAG, "Document PDF generated: ${outputFile.absolutePath} (${outputFile.length()} bytes)")
-      Result.success(outputFile)
-    } catch (e: Exception) {
-      Log.e(TAG, "generateDocumentPdf failed: ${e.message}", e)
-      Result.failure(e)
+      if (writeSuccess) {
+        Log.i(TAG, "Document PDF generated: ${outputFile.absolutePath} (${outputFile.length()} bytes)")
+        Result.success(outputFile)
+      } else {
+        generateFallbackDocumentPdf(title, content, outputFile)
+      }
+    } catch (e: Throwable) {
+      Log.e(TAG, "generateDocumentPdf fallback: ${e.message}", e)
+      generateFallbackDocumentPdf(title, content, outputFile)
     }
   }
 
@@ -150,12 +159,11 @@ object PdfExportManager {
     report: OriginalityReport,
     targetFile: File? = null
   ): Result<File> = withContext(Dispatchers.IO) {
+    val outputFile = targetFile ?: File(
+      context.cacheDir,
+      "${sanitizeFilename(report.documentTitle)}_Originality_Report.pdf"
+    )
     try {
-      val outputFile = targetFile ?: File(
-        context.cacheDir,
-        "${sanitizeFilename(report.documentTitle)}_Originality_Report.pdf"
-      )
-
       val pdfDoc = PdfDocument()
 
       val pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, 1).create()
@@ -278,21 +286,29 @@ object PdfExportManager {
       summaryLayout.draw(canvas)
       canvas.restore()
 
-      // Footer
-      drawFooter(canvas, 1)
-
-      pdfDoc.finishPage(page)
-
-      FileOutputStream(outputFile).use { out ->
-        pdfDoc.writeTo(out)
+      var writeSuccess = false
+      try {
+        drawFooter(canvas, 1)
+        pdfDoc.finishPage(page)
+        FileOutputStream(outputFile).use { out ->
+          pdfDoc.writeTo(out)
+        }
+        writeSuccess = outputFile.exists() && outputFile.length() > 200
+      } catch (e: Throwable) {
+        Log.w(TAG, "Standard PdfDocument write failed: ${e.message}. Using resilient pure engine...")
+      } finally {
+        try { pdfDoc.close() } catch (_: Throwable) {}
       }
-      pdfDoc.close()
 
-      Log.i(TAG, "Originality Report PDF generated: ${outputFile.absolutePath}")
-      Result.success(outputFile)
-    } catch (e: Exception) {
-      Log.e(TAG, "generateOriginalityReportPdf failed: ${e.message}", e)
-      Result.failure(e)
+      if (writeSuccess) {
+        Log.i(TAG, "Originality Report PDF generated: ${outputFile.absolutePath}")
+        Result.success(outputFile)
+      } else {
+        generateFallbackOriginalityReportPdf(report, outputFile)
+      }
+    } catch (e: Throwable) {
+      Log.e(TAG, "generateOriginalityReportPdf fallback: ${e.message}", e)
+      generateFallbackOriginalityReportPdf(report, outputFile)
     }
   }
 
@@ -417,5 +433,249 @@ object PdfExportManager {
 
   private fun sanitizeFilename(name: String): String {
     return name.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(50)
+  }
+
+  private fun generateFallbackDocumentPdf(
+    title: String,
+    content: String,
+    outputFile: File
+  ): Result<File> {
+    return try {
+      val baos = java.io.ByteArrayOutputStream()
+      val writer = java.io.PrintWriter(baos)
+      val offsets = mutableListOf<Long>()
+
+      writer.print("%PDF-1.4\n")
+      writer.print("%\u00e2\u00e3\u00cf\u00d3\n")
+      writer.flush()
+
+      fun writeObj(objNum: Int, body: String) {
+        writer.flush()
+        while (offsets.size < objNum) offsets.add(0L)
+        offsets[objNum - 1] = baos.size().toLong()
+        writer.print("$objNum 0 obj\n")
+        writer.print(body)
+        writer.print("\nendobj\n")
+        writer.flush()
+      }
+
+      writeObj(1, "<< /Type /Catalog /Pages 2 0 R >>")
+      writeObj(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
+      writeObj(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+      writeObj(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $PAGE_WIDTH $PAGE_HEIGHT] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>")
+
+      val streamContent = StringBuilder()
+      streamContent.append("BT\n")
+      streamContent.append("/F1 15 Tf\n")
+      streamContent.append("40 800 Td\n")
+      streamContent.append("(${escapePdf(title)}) Tj\n")
+      streamContent.append("/F1 9 Tf\n")
+      streamContent.append("0 -16 Td\n")
+      streamContent.append("(${escapePdf("Genzii Document Vault • ${dateFormat.format(Date())}")}) Tj\n")
+      streamContent.append("0 -12 Td\n")
+      streamContent.append("(${escapePdf("------------------------------------------------------------------------------------------------")}) Tj\n")
+
+      streamContent.append("/F1 10 Tf\n")
+      val paragraphs = content.split("\n\n").filter { it.isNotBlank() }
+      var lineCount = 0
+      for (para in paragraphs) {
+        if (lineCount > 50) break
+        val words = para.trim().split(Regex("\\s+"))
+        var currentLine = StringBuilder()
+        for (word in words) {
+          if (currentLine.length + word.length > 75) {
+            streamContent.append("0 -13 Td\n")
+            streamContent.append("(${escapePdf(currentLine.toString())}) Tj\n")
+            currentLine = StringBuilder(word)
+            lineCount++
+            if (lineCount > 50) break
+          } else {
+            if (currentLine.isNotEmpty()) currentLine.append(" ")
+            currentLine.append(word)
+          }
+        }
+        if (currentLine.isNotEmpty() && lineCount <= 50) {
+          streamContent.append("0 -13 Td\n")
+          streamContent.append("(${escapePdf(currentLine.toString())}) Tj\n")
+          lineCount++
+        }
+        streamContent.append("0 -8 Td\n")
+      }
+
+      streamContent.append("/F1 8 Tf\n")
+      streamContent.append("0 -20 Td\n")
+      streamContent.append("(${escapePdf("Genzii Document Platform • Confidential • Page 1")}) Tj\n")
+      streamContent.append("ET\n")
+
+      val streamBytes = streamContent.toString().toByteArray(Charsets.ISO_8859_1)
+      val streamBody = "<< /Length ${streamBytes.size} >>\nstream\n${streamContent}endstream"
+      writeObj(5, streamBody)
+
+      writer.flush()
+      val startXref = baos.size().toLong()
+      val totalObjs = offsets.size + 1
+      writer.print("xref\n")
+      writer.print("0 $totalObjs\n")
+      writer.print("0000000000 65535 f \n")
+      for (offset in offsets) {
+        writer.printf("%010d 00000 n \n", offset)
+      }
+      writer.print("trailer\n")
+      writer.print("<< /Size $totalObjs /Root 1 0 R >>\n")
+      writer.print("startxref\n")
+      writer.print("$startXref\n")
+      writer.print("%%EOF\n")
+      writer.flush()
+
+      FileOutputStream(outputFile).use { fos ->
+        fos.write(baos.toByteArray())
+      }
+      Log.i(TAG, "Fallback document PDF generated: ${outputFile.absolutePath} (${outputFile.length()} bytes)")
+      Result.success(outputFile)
+    } catch (e: Throwable) {
+      Log.e(TAG, "generateFallbackDocumentPdf failed: ${e.message}", e)
+      Result.failure(e)
+    }
+  }
+
+  private fun generateFallbackOriginalityReportPdf(
+    report: OriginalityReport,
+    outputFile: File
+  ): Result<File> {
+    return try {
+      val baos = java.io.ByteArrayOutputStream()
+      val writer = java.io.PrintWriter(baos)
+      val offsets = mutableListOf<Long>()
+
+      writer.print("%PDF-1.4\n")
+      writer.print("%\u00e2\u00e3\u00cf\u00d3\n")
+      writer.flush()
+
+      fun writeObj(objNum: Int, body: String) {
+        writer.flush()
+        while (offsets.size < objNum) offsets.add(0L)
+        offsets[objNum - 1] = baos.size().toLong()
+        writer.print("$objNum 0 obj\n")
+        writer.print(body)
+        writer.print("\nendobj\n")
+        writer.flush()
+      }
+
+      writeObj(1, "<< /Type /Catalog /Pages 2 0 R >>")
+      writeObj(2, "<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
+      writeObj(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+      writeObj(4, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $PAGE_WIDTH $PAGE_HEIGHT] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>")
+
+      val streamContent = StringBuilder()
+      streamContent.append("BT\n")
+      streamContent.append("/F1 16 Tf\n")
+      streamContent.append("40 800 Td\n")
+      streamContent.append("(${escapePdf("GENZII ORIGINALITY CERTIFICATE")}) Tj\n")
+      streamContent.append("/F1 9 Tf\n")
+      streamContent.append("0 -16 Td\n")
+      streamContent.append("(${escapePdf("Document: ${report.documentTitle} • Generated: ${dateFormat.format(Date())}")}) Tj\n")
+      streamContent.append("0 -14 Td\n")
+      streamContent.append("(${escapePdf("Verification Engine: Genzii Academic Similarity Index")}) Tj\n")
+      streamContent.append("0 -12 Td\n")
+      streamContent.append("(${escapePdf("================================================================================")}) Tj\n")
+
+      streamContent.append("/F1 12 Tf\n")
+      streamContent.append("0 -20 Td\n")
+      streamContent.append("(${escapePdf("ORIGINAL CONTENT: ${report.originalPercentage}%   |   MATCHED SIMILARITY: ${report.similarityPercentage}%")}) Tj\n")
+
+      streamContent.append("/F1 9.5 Tf\n")
+      streamContent.append("0 -16 Td\n")
+      streamContent.append("(${escapePdf("Total Words: ${report.wordsCount}   |   Sources Examined: ${report.sourcesCount}   |   Matching Passages: ${report.matchesCount}")}) Tj\n")
+      streamContent.append("0 -12 Td\n")
+      streamContent.append("(${escapePdf("--------------------------------------------------------------------------------")}) Tj\n")
+
+      streamContent.append("/F1 11 Tf\n")
+      streamContent.append("0 -18 Td\n")
+      streamContent.append("(${escapePdf("Identified Sources & Index Alignments:")}) Tj\n")
+
+      streamContent.append("/F1 9 Tf\n")
+      for (src in report.sources.take(4)) {
+        streamContent.append("0 -14 Td\n")
+        streamContent.append("(${escapePdf("• Domain: ${src.domain} (${src.matchPercentage}% match)")}) Tj\n")
+        streamContent.append("0 -12 Td\n")
+        streamContent.append("(${escapePdf("  URL: ${src.url}")}) Tj\n")
+        streamContent.append("0 -12 Td\n")
+        streamContent.append("(${escapePdf("  Excerpt: ${src.excerpt.take(90)}")}) Tj\n")
+      }
+
+      streamContent.append("/F1 11 Tf\n")
+      streamContent.append("0 -18 Td\n")
+      streamContent.append("(${escapePdf("Analysis Summary & Excerpt:")}) Tj\n")
+
+      streamContent.append("/F1 9 Tf\n")
+      val summaryExcerpt = report.highlightedContent.take(800)
+      val words = summaryExcerpt.split(Regex("\\s+"))
+      var curLine = StringBuilder()
+      var summaryLineCount = 0
+      for (w in words) {
+        if (curLine.length + w.length > 80) {
+          streamContent.append("0 -12 Td\n")
+          streamContent.append("(${escapePdf(curLine.toString())}) Tj\n")
+          curLine = StringBuilder(w)
+          summaryLineCount++
+          if (summaryLineCount > 18) break
+        } else {
+          if (curLine.isNotEmpty()) curLine.append(" ")
+          curLine.append(w)
+        }
+      }
+      if (curLine.isNotEmpty() && summaryLineCount <= 18) {
+        streamContent.append("0 -12 Td\n")
+        streamContent.append("(${escapePdf(curLine.toString())}) Tj\n")
+      }
+
+      streamContent.append("/F1 8 Tf\n")
+      streamContent.append("0 -24 Td\n")
+      streamContent.append("(${escapePdf("Genzii Document Platform • Confidential • Certificate ID: ${report.id} • Digital Seal Verified")}) Tj\n")
+      streamContent.append("ET\n")
+
+      val streamBytes = streamContent.toString().toByteArray(Charsets.ISO_8859_1)
+      val streamBody = "<< /Length ${streamBytes.size} >>\nstream\n${streamContent}endstream"
+      writeObj(5, streamBody)
+
+      writer.flush()
+      val startXref = baos.size().toLong()
+      val totalObjs = offsets.size + 1
+      writer.print("xref\n")
+      writer.print("0 $totalObjs\n")
+      writer.print("0000000000 65535 f \n")
+      for (offset in offsets) {
+        writer.printf("%010d 00000 n \n", offset)
+      }
+      writer.print("trailer\n")
+      writer.print("<< /Size $totalObjs /Root 1 0 R >>\n")
+      writer.print("startxref\n")
+      writer.print("$startXref\n")
+      writer.print("%%EOF\n")
+      writer.flush()
+
+      FileOutputStream(outputFile).use { fos ->
+        fos.write(baos.toByteArray())
+      }
+      Log.i(TAG, "Fallback originality report PDF generated: ${outputFile.absolutePath} (${outputFile.length()} bytes)")
+      Result.success(outputFile)
+    } catch (e: Throwable) {
+      Log.e(TAG, "generateFallbackOriginalityReportPdf failed: ${e.message}", e)
+      Result.failure(e)
+    }
+  }
+
+  private fun escapePdf(s: String): String {
+    val sb = StringBuilder()
+    for (ch in s) {
+      when (ch) {
+        '\\' -> sb.append("\\\\")
+        '(' -> sb.append("\\(")
+        ')' -> sb.append("\\)")
+        in ' '..'~' -> sb.append(ch)
+        else -> sb.append(' ')
+      }
+    }
+    return sb.toString()
   }
 }

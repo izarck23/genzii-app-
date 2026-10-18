@@ -27,9 +27,6 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
-    lifecycleScope.launch(Dispatchers.Default) {
-      com.example.ads.GoogleAdsManager.initialize(applicationContext)
-    }
     setContent {
       val userProfile by GenziiRepository.userProfile.collectAsState()
       val isSystemDark = isSystemInDarkTheme()

@@ -68,6 +68,10 @@ object GoogleAdsManager {
     if (isInitialized || isInitializing) return
     isInitializing = true
     try {
+      val reqConfig = MobileAds.getRequestConfiguration().toBuilder()
+        .setTestDeviceIds(listOf(AdRequest.DEVICE_ID_EMULATOR))
+        .build()
+      MobileAds.setRequestConfiguration(reqConfig)
       MobileAds.initialize(context) { status ->
         isInitialized = true
         isInitializing = false
@@ -180,8 +184,14 @@ fun GoogleTestBannerAd(
       modifier = Modifier.fillMaxWidth(),
       factory = { ctx ->
         AdView(ctx).apply {
+          setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
           setAdSize(AdSize.BANNER)
           adUnitId = GoogleAdsManager.BANNER_TEST_AD_UNIT_ID
+          adListener = object : AdListener() {
+            override fun onAdFailedToLoad(error: LoadAdError) {
+              Log.d("GoogleAdsManager", "Banner ad failed to load (code ${error.code}): ${error.message}")
+            }
+          }
           loadAd(AdRequest.Builder().build())
         }
       }

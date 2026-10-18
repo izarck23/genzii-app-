@@ -15,7 +15,5 @@
 .cxx
 local.properties
 debug.keystore
-*.apk
 backup_*
 .build-outputs/
-apk/
