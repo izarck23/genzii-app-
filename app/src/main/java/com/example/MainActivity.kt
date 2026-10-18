@@ -19,12 +19,17 @@ import com.example.model.ThemeMode
 import com.example.navigation.GenziiBottomNavigationBar
 import com.example.navigation.GenziiNavGraph
 import com.example.ui.theme.MyApplicationTheme
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
-    com.example.ads.GoogleAdsManager.initialize(this)
+    lifecycleScope.launch(Dispatchers.Default) {
+      com.example.ads.GoogleAdsManager.initialize(applicationContext)
+    }
     setContent {
       val userProfile by GenziiRepository.userProfile.collectAsState()
       val isSystemDark = isSystemInDarkTheme()

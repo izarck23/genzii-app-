@@ -56,6 +56,7 @@ import com.example.data.UserDocumentRepository
 import com.example.model.FileType
 import com.example.ocr.*
 import com.example.ui.theme.*
+import com.example.util.PdfExportManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1051,6 +1052,23 @@ fun OcrScannerScreen(onBack: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
           ) {
             Text("Done")
+          }
+        },
+        dismissButton = {
+          OutlinedButton(
+            onClick = {
+              showExportSuccessDialog = false
+              coroutineScope.launch {
+                val genResult = SearchablePdfGenerator.generateSearchablePdf(context, document)
+                if (genResult.isSuccess) {
+                  PdfExportManager.printPdfFile(context, document.title, genResult.getOrThrow())
+                }
+              }
+            }
+          ) {
+            Icon(Icons.Filled.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Print / Spool")
           }
         }
       )

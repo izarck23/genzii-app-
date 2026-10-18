@@ -36,6 +36,7 @@ import com.example.model.FileType
 import com.example.ui.components.FileTypeIcon
 import com.example.ui.components.GenziiTopBar
 import com.example.ui.theme.*
+import com.example.util.PdfExportManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -581,18 +582,27 @@ fun FilePreviewScreen(
   val coroutineScope = rememberCoroutineScope()
 
   val exportLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.CreateDocument(
-      if (doc?.type == FileType.PDF) "application/pdf" else "text/plain"
-    )
+    contract = ActivityResultContracts.CreateDocument("application/pdf")
   ) { uri ->
     if (uri != null && doc != null) {
       coroutineScope.launch(Dispatchers.IO) {
         try {
-          context.contentResolver.openOutputStream(uri)?.use { out ->
-            out.write(doc.content.toByteArray())
+          if (doc.type == FileType.PDF && doc.content.startsWith("%PDF")) {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+              out.write(doc.content.toByteArray())
+            }
+          } else {
+            val genResult = PdfExportManager.generateDocumentPdf(context, doc.name, doc.content)
+            if (genResult.isSuccess) {
+              PdfExportManager.exportPdfToUri(context, genResult.getOrThrow(), uri)
+            } else {
+              context.contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(doc.content.toByteArray())
+              }
+            }
           }
           withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Exported successfully!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Exported successfully as PDF!", Toast.LENGTH_SHORT).show()
           }
         } catch (e: Exception) {
           withContext(Dispatchers.Main) {
@@ -686,7 +696,18 @@ fun FilePreviewScreen(
             }
           }
           BottomActionItem(label = "Export", icon = Icons.Outlined.Download) {
-            exportLauncher.launch(doc.name)
+            val exportName = if (doc.name.endsWith(".pdf", ignoreCase = true)) doc.name else "${doc.name}.pdf"
+            exportLauncher.launch(exportName)
+          }
+          BottomActionItem(label = "Print", icon = Icons.Outlined.Print) {
+            coroutineScope.launch {
+              val genResult = PdfExportManager.generateDocumentPdf(context, doc.name, doc.content)
+              if (genResult.isSuccess) {
+                PdfExportManager.printPdfFile(context, doc.name, genResult.getOrThrow())
+              } else {
+                Toast.makeText(context, "Print preparation failed: ${genResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+              }
+            }
           }
           BottomActionItem(label = if (isEditing) "Save" else "Edit", icon = if (isEditing) Icons.Default.Save else Icons.Outlined.Edit) {
             if (isEditing) {

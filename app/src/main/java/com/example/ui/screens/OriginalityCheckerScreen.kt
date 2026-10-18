@@ -41,6 +41,8 @@ import com.example.network.GeminiService
 import com.example.ui.components.OriginalityGauge
 import com.example.ui.theme.*
 import com.example.util.FileUtils
+import com.example.util.PdfExportManager
+import android.widget.Toast
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -86,6 +88,27 @@ fun OriginalityCheckerScreen(
           textInput = fileInfo.content
         } catch (e: Exception) {
           // Keep existing content
+        }
+      }
+    }
+  }
+
+  val exportReportLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.CreateDocument("application/pdf")
+  ) { uri: Uri? ->
+    if (uri != null && activeReport != null) {
+      coroutineScope.launch {
+        val genResult = PdfExportManager.generateOriginalityReportPdf(context, activeReport!!)
+        if (genResult.isSuccess) {
+          val file = genResult.getOrThrow()
+          val exportResult = PdfExportManager.exportPdfToUri(context, file, uri)
+          if (exportResult.isSuccess) {
+            Toast.makeText(context, "Originality Report PDF saved successfully!", Toast.LENGTH_SHORT).show()
+          } else {
+            Toast.makeText(context, "Failed to save PDF: ${exportResult.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+          }
+        } else {
+          Toast.makeText(context, "Failed to generate report PDF: ${genResult.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
         }
       }
     }
@@ -618,11 +641,43 @@ fun OriginalityCheckerScreen(
           }
         },
         confirmButton = {
-          Button(
-            onClick = { showFullReportModal = false },
-            colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+          Row(
+            verticalAlignment = Alignment.CenterVertically
           ) {
-            Text("Done")
+            OutlinedButton(
+              onClick = {
+                coroutineScope.launch {
+                  val genResult = PdfExportManager.generateOriginalityReportPdf(context, report)
+                  if (genResult.isSuccess) {
+                    PdfExportManager.printPdfFile(context, "Originality Report - ${report.documentTitle}", genResult.getOrThrow())
+                  } else {
+                    Toast.makeText(context, "Failed to prepare print document", Toast.LENGTH_SHORT).show()
+                  }
+                }
+              },
+              modifier = Modifier.padding(end = 6.dp)
+            ) {
+              Icon(Icons.Filled.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("Print / PDF", fontSize = 11.sp)
+            }
+
+            Button(
+              onClick = {
+                val filename = "${report.documentTitle.replace(Regex("[^a-zA-Z0-9._-]"), "_")}_Report.pdf"
+                exportReportLauncher.launch(filename)
+              },
+              colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+            ) {
+              Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("Export PDF", fontSize = 11.sp)
+            }
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showFullReportModal = false }) {
+            Text("Close")
           }
         }
       )
