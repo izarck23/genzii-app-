@@ -549,6 +549,8 @@ fun FileTypeIcon(
     FileType.PPTX -> Color(0xFFFFF0EB) to Icons.Default.Slideshow
     FileType.TXT -> Color(0xFFEBFBF3) to Icons.Default.Article
     FileType.IMAGE -> Color(0xFFF3EBFF) to Icons.Default.Image
+    FileType.AUDIO -> Color(0xFFFFF8E1) to Icons.Default.Audiotrack
+    FileType.OTHER -> Color(0xFFEDE7F6) to Icons.Default.InsertDriveFile
   }
   val iconTint = when (type) {
     FileType.PDF -> Color(0xFFE53935)
@@ -556,6 +558,8 @@ fun FileTypeIcon(
     FileType.PPTX -> Color(0xFFFB8C00)
     FileType.TXT -> Color(0xFF43A047)
     FileType.IMAGE -> GenziiPurple
+    FileType.AUDIO -> Color(0xFFF57F17)
+    FileType.OTHER -> Color(0xFF7E57C2)
   }
 
   Box(

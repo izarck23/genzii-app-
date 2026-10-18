@@ -1,7 +1,7 @@
 package com.example.model
 
 enum class FileType {
-  PDF, DOCX, PPTX, TXT, IMAGE
+  PDF, DOCX, PPTX, TXT, IMAGE, AUDIO, OTHER
 }
 
 data class DocumentItem(
@@ -14,7 +14,9 @@ data class DocumentItem(
   val originalityScore: Int? = null,
   val isEncrypted: Boolean = true,
   val content: String = "",
-  val isStarred: Boolean = false
+  val isStarred: Boolean = false,
+  val thumbnailUri: String? = null,
+  val isDeviceFile: Boolean = false
 )
 
 data class SourceMatch(
