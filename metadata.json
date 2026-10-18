@@ -1,0 +1,6 @@
+{
+  "name": "Genzii",
+  "description": "Think smarter. Write originally. Keep everything secure. Smart AI writing, originality checker, and secure vault.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
