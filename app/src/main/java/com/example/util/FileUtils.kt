@@ -61,7 +61,9 @@ object FileUtils {
       "docx", "doc" -> FileType.DOCX
       "pptx", "ppt" -> FileType.PPTX
       "jpg", "jpeg", "png", "webp", "bmp" -> FileType.IMAGE
-      else -> FileType.TXT
+      "mp3", "wav", "m4a", "aac", "ogg" -> FileType.AUDIO
+      "txt", "md", "csv", "json" -> FileType.TXT
+      else -> FileType.OTHER
     }
 
     var isOcr = false
@@ -94,6 +96,14 @@ object FileUtils {
       FileType.PPTX -> {
         readDocxStream(context, uri).ifBlank {
           "Presentation file: $fileName\nContains slides and presentation outline."
+        }
+      }
+      FileType.AUDIO -> {
+        "Audio Document: $fileName\nDuration metadata and audio transcription notes."
+      }
+      FileType.OTHER -> {
+        readTextStream(context, uri).ifBlank {
+          "File: $fileName\nStored securely in Genzii Vault."
         }
       }
     }
