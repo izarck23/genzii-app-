@@ -3,7 +3,7 @@
     <string name="google_app_id" translatable="false">1:1019503501273:android:763697d0bb7603ad8983c8</string>
     <string name="gcm_defaultSenderId" translatable="false">1019503501273</string>
     <string name="project_id" translatable="false">genzii-5413c</string>
-    <string name="default_web_client_id" translatable="false">1019503501273-00000000000000000000000000000000.apps.googleusercontent.com</string>
+    <string name="default_web_client_id" translatable="false">1019503501273-973vt0brt0u26mgqsk6hli1imlsspb66.apps.googleusercontent.com</string>
     <string name="firebase_database_url" translatable="false">https://genzii-5413c.firebaseio.com</string>
     <string name="google_api_key" translatable="false">AIzaSyAxz2CZb01jE0ZRIKkC6ATAU7LwNjYIITg</string>
     <string name="google_storage_bucket" translatable="false">genzii-5413c.firebasestorage.app</string>

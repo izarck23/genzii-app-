@@ -18,6 +18,7 @@ class FirebaseAuthTest {
     assertEquals("genzii-5413c", FirebaseAuthManager.FIREBASE_PROJECT_ID)
     assertEquals("1019503501273", FirebaseAuthManager.FIREBASE_PROJECT_NUMBER)
     assertEquals("1:1019503501273:android:763697d0bb7603ad8983c8", FirebaseAuthManager.FIREBASE_APP_ID)
+    assertEquals("1019503501273-973vt0brt0u26mgqsk6hli1imlsspb66.apps.googleusercontent.com", FirebaseAuthManager.FIREBASE_WEB_CLIENT_ID)
   }
 
   @Test

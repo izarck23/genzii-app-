@@ -41,6 +41,7 @@ object FirebaseAuthManager {
   const val FIREBASE_PROJECT_ID = "genzii-5413c"
   const val FIREBASE_PROJECT_NUMBER = "1019503501273"
   const val FIREBASE_APP_ID = "1:1019503501273:android:763697d0bb7603ad8983c8"
+  const val FIREBASE_WEB_CLIENT_ID = "1019503501273-973vt0brt0u26mgqsk6hli1imlsspb66.apps.googleusercontent.com"
 
   private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
   val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
@@ -216,9 +217,9 @@ object FirebaseAuthManager {
       // Look up server client ID or use default Google Cloud project number clientId
       val webClientId = try {
         val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-        if (resId != 0) context.getString(resId) else "1019503501273-web.apps.googleusercontent.com"
+        if (resId != 0) context.getString(resId) else FIREBASE_WEB_CLIENT_ID
       } catch (_: Exception) {
-        "1019503501273-web.apps.googleusercontent.com"
+        FIREBASE_WEB_CLIENT_ID
       }
 
       val googleIdOption = GetGoogleIdOption.Builder()

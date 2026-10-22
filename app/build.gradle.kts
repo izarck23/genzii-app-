@@ -112,6 +112,8 @@ dependencies {
   implementation(libs.firebase.ai)
   // Firestore database
   implementation(libs.firebase.firestore)
+  // Firebase Storage for Vault and cloud documents
+  implementation(libs.firebase.storage)
 
   // Firebase Auth and Google Sign-In via Credential Manager
   implementation(libs.firebase.auth)
