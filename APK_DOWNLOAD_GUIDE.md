@@ -26,9 +26,9 @@ We packaged the APK into a standard ZIP archive:
 ---
 
 ### 📦 Verified APK Details
-- **File Name:** `Genzii-com-genzii-latest.apk`
-- **Location:** `APK/Genzii-com-genzii-latest.apk`
-- **Package ID:** `com.genzii` (v1.3.0, Version Code: 4)
+- **File Name:** `Genzii-com-genzii-app-latest.apk` (or `Genzii-debug.apk`)
+- **Location:** `testing/Genzii-debug.apk` and `APK/Genzii-com-genzii-app-latest.apk`
+- **Package ID:** `com.genzii.app` (v1.3.0, Version Code: 4)
 - **Size:** 77 MB (79,805,784 bytes)
 - **SHA-256 Checksum:** `bf6f818315150432999e20a78c463256f64b261046c9432ceb310a5bc0727879`
 - **Build Status:** Verified passing `assembleDebug` and all 31 unit & functional tests.

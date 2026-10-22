@@ -13,7 +13,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.genzii"
+    applicationId = "com.genzii.app"
     minSdk = 24
     targetSdk = 36
     versionCode = 4
@@ -118,7 +118,7 @@ dependencies {
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)
-  // implementation("com.google.firebase:firebase-analytics")
+  implementation(libs.firebase.analytics)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)

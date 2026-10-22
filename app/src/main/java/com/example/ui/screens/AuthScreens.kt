@@ -51,7 +51,6 @@ fun LoginScreen(
   var isPasswordVisible by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var isLoading by remember { mutableStateOf(false) }
-  var showGoogleAccountPicker by remember { mutableStateOf(false) }
 
   Scaffold(
     containerColor = MaterialTheme.colorScheme.background
@@ -326,8 +325,7 @@ fun LoginScreen(
                 // User dismissed Google sheet
               }
               is AuthResult.Error -> {
-                // If Play Services is unavailable on local emulator or test sandbox, open account selector fallback
-                showGoogleAccountPicker = true
+                errorMessage = res.message
               }
               else -> Unit
             }
@@ -385,75 +383,6 @@ fun LoginScreen(
 
       Spacer(modifier = Modifier.height(24.dp))
     }
-
-    // Google Account Picker Dialog (for device fallback or testing without Google Play Services)
-    if (showGoogleAccountPicker) {
-      AlertDialog(
-        onDismissRequest = { showGoogleAccountPicker = false },
-        title = {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-              painter = painterResource(id = R.drawable.ic_google_logo),
-              contentDescription = null,
-              modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-              text = "Sign in with Google",
-              fontFamily = PoppinsFontFamily,
-              fontWeight = FontWeight.Bold,
-              fontSize = 17.sp
-            )
-          }
-        },
-        text = {
-          Column {
-            Text(
-              text = "Choose a Google account to link with Firebase project genzii-5413c:",
-              fontSize = 13.sp,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            Card(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                  showGoogleAccountPicker = false
-                  GenziiRepository.signIn("alex.student@gmail.com", "Alex Student")
-                  onLoginSuccess()
-                },
-              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-              Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Box(
-                  modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(GenziiPurple),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Text("AS", color = GenziiWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                  Text("Alex Student", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                  Text("alex.student@gmail.com", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-              }
-            }
-          }
-        },
-        confirmButton = {
-          TextButton(onClick = { showGoogleAccountPicker = false }) {
-            Text("Cancel", color = GenziiPurple)
-          }
-        }
-      )
-    }
   }
 }
 
@@ -471,7 +400,6 @@ fun CreateAccountScreen(
   var isPasswordVisible by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var isLoading by remember { mutableStateOf(false) }
-  var showGoogleAccountPicker by remember { mutableStateOf(false) }
 
   Scaffold(
     containerColor = MaterialTheme.colorScheme.background
@@ -551,7 +479,7 @@ fun CreateAccountScreen(
               }
               is AuthResult.Cancelled -> Unit
               is AuthResult.Error -> {
-                showGoogleAccountPicker = true
+                errorMessage = res.message
               }
               else -> Unit
             }
@@ -776,75 +704,6 @@ fun CreateAccountScreen(
 
       Spacer(modifier = Modifier.height(32.dp))
     }
-
-    // Google Account Picker Dialog
-    if (showGoogleAccountPicker) {
-      AlertDialog(
-        onDismissRequest = { showGoogleAccountPicker = false },
-        title = {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-              painter = painterResource(id = R.drawable.ic_google_logo),
-              contentDescription = null,
-              modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-              text = "Sign up with Google",
-              fontFamily = PoppinsFontFamily,
-              fontWeight = FontWeight.Bold,
-              fontSize = 17.sp
-            )
-          }
-        },
-        text = {
-          Column {
-            Text(
-              text = "Choose a Google account to create your Genzii profile in Firebase genzii-5413c:",
-              fontSize = 13.sp,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            Card(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                  showGoogleAccountPicker = false
-                  GenziiRepository.signIn("alex.student@gmail.com", "Alex Student")
-                  onSignupSuccess("alex.student@gmail.com")
-                },
-              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-              Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Box(
-                  modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(GenziiPurple),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Text("AS", color = GenziiWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                  Text("Alex Student", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                  Text("alex.student@gmail.com", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-              }
-            }
-          }
-        },
-        confirmButton = {
-          TextButton(onClick = { showGoogleAccountPicker = false }) {
-            Text("Cancel", color = GenziiPurple)
-          }
-        }
-      )
-    }
   }
 }
 
@@ -986,54 +845,35 @@ fun OtpVerificationScreen(
 
       Spacer(modifier = Modifier.height(16.dp))
 
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        // Quick Fill chip
-        OutlinedButton(
-          onClick = {
-            otpCode = "729415"
-            errorMessage = null
-          },
-          shape = RoundedCornerShape(12.dp),
-          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-          border = androidx.compose.foundation.BorderStroke(1.dp, GenziiPurple.copy(alpha = 0.5f))
-        ) {
-          Icon(Icons.Default.Pin, contentDescription = null, modifier = Modifier.size(14.dp), tint = GenziiPurple)
-          Spacer(modifier = Modifier.width(4.dp))
-          Text("Demo Code", fontSize = 11.sp, color = GenziiPurple, fontWeight = FontWeight.Medium)
-        }
-
-        // Check Firebase verification status button
-        OutlinedButton(
-          onClick = {
-            isCheckingStatus = true
-            coroutineScope.launch {
-              val isVerified = FirebaseAuthManager.checkEmailVerified()
-              isCheckingStatus = false
-              if (isVerified) {
-                Toast.makeText(context, "Email is verified! Proceeding...", Toast.LENGTH_SHORT).show()
-                onVerifySuccess()
-              } else {
-                statusMessage = "Verification link clicked? Check inbox or click Resend."
-              }
+      // Check Firebase verification status button
+      Button(
+        onClick = {
+          isCheckingStatus = true
+          coroutineScope.launch {
+            val isVerified = FirebaseAuthManager.checkEmailVerified()
+            isCheckingStatus = false
+            if (isVerified) {
+              Toast.makeText(context, "Email is verified! Proceeding...", Toast.LENGTH_SHORT).show()
+              onVerifySuccess()
+            } else {
+              statusMessage = "Verification link clicked? Check inbox or click Resend."
             }
-          },
-          shape = RoundedCornerShape(12.dp),
-          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-          border = androidx.compose.foundation.BorderStroke(1.dp, GenziiPurple.copy(alpha = 0.5f))
-        ) {
-          if (isCheckingStatus) {
-            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = GenziiPurple)
-            Spacer(modifier = Modifier.width(4.dp))
-          } else {
-            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp), tint = GenziiPurple)
-            Spacer(modifier = Modifier.width(4.dp))
           }
-          Text("Check Link", fontSize = 11.sp, color = GenziiPurple, fontWeight = FontWeight.Medium)
+        },
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(48.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = GenziiPurpleContainer, contentColor = GenziiPurple)
+      ) {
+        if (isCheckingStatus) {
+          CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = GenziiPurple)
+          Spacer(modifier = Modifier.width(8.dp))
+        } else {
+          Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = GenziiPurple)
+          Spacer(modifier = Modifier.width(8.dp))
         }
+        Text("Check Verification Link Status", fontSize = 13.sp, color = GenziiPurple, fontWeight = FontWeight.SemiBold)
       }
 
       Spacer(modifier = Modifier.height(20.dp))
@@ -1069,7 +909,7 @@ fun OtpVerificationScreen(
       Button(
         onClick = {
           if (otpCode.length < 6) {
-            errorMessage = "Please enter the complete 6-digit code or click Demo Code"
+            errorMessage = "Please enter the 6-digit confirmation code or click 'Check Verification Link Status'"
           } else {
             onVerifySuccess()
           }

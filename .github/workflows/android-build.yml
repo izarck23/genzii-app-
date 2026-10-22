@@ -86,15 +86,19 @@ jobs:
           echo "Generated APK: $APK_PATH"
           ls -lh "$APK_PATH"
           sha256sum "$APK_PATH"
-          mkdir -p APK
+          mkdir -p APK testing
+          cp "$APK_PATH" APK/Genzii-com-genzii-app-latest.apk
           cp "$APK_PATH" APK/Genzii-com-genzii-latest.apk
           cp "$APK_PATH" APK/app-debug.apk
+          cp "$APK_PATH" testing/Genzii-debug.apk
+          ls -lh testing/Genzii-debug.apk
+          sha256sum testing/Genzii-debug.apk
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Genzii-Android-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: testing/Genzii-debug.apk
           retention-days: 30
           if-no-files-found: error
 
