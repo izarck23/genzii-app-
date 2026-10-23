@@ -157,7 +157,9 @@ fun OcrScannerScreen(onBack: () -> Unit) {
     processOcrForPage(newIndex)
   }
 
-  // Camera Capture Launcher
+  var showCameraXScanner by remember { mutableStateOf(false) }
+
+  // Camera Capture Launcher (Fallback)
   val cameraCaptureLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.TakePicturePreview()
   ) { bitmap: Bitmap? ->
@@ -174,7 +176,7 @@ fun OcrScannerScreen(onBack: () -> Unit) {
     isCameraPermissionGranted = isGranted
     if (isGranted) {
       wasCameraDenied = false
-      cameraCaptureLauncher.launch(null)
+      showCameraXScanner = true
     } else {
       wasCameraDenied = true
     }
@@ -239,6 +241,22 @@ fun OcrScannerScreen(onBack: () -> Unit) {
         }
       }
     }
+  }
+
+  if (showCameraXScanner) {
+    CameraXDocumentScannerScreen(
+      onClose = { showCameraXScanner = false },
+      onPagesCaptured = { newPages ->
+        showCameraXScanner = false
+        if (newPages.isNotEmpty()) {
+          val updatedPages = ArrayList(document.pages).apply { addAll(newPages) }
+          val newIndex = updatedPages.size - 1
+          document = document.copy(pages = updatedPages, activePageIndex = newIndex)
+          Toast.makeText(context, "Captured ${newPages.size} page(s) with CameraX", Toast.LENGTH_SHORT).show()
+        }
+      }
+    )
+    return
   }
 
   val activePage = document.currentPage
@@ -389,7 +407,7 @@ fun OcrScannerScreen(onBack: () -> Unit) {
         Button(
           onClick = {
             if (isCameraPermissionGranted) {
-              cameraCaptureLauncher.launch(null)
+              showCameraXScanner = true
             } else {
               cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
@@ -402,7 +420,7 @@ fun OcrScannerScreen(onBack: () -> Unit) {
         ) {
           Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
           Spacer(modifier = Modifier.width(6.dp))
-          Text("Camera", fontSize = 13.sp)
+          Text("Scan Doc", fontSize = 13.sp)
         }
 
         OutlinedButton(
@@ -573,9 +591,9 @@ fun OcrScannerScreen(onBack: () -> Unit) {
                     .background(GenziiPurpleContainer.copy(alpha = 0.2f))
                     .clickable {
                       if (isCameraPermissionGranted) {
-                        cameraCaptureLauncher.launch(null)
+                        showCameraXScanner = true
                       } else {
-                        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                       }
                     },
                   contentAlignment = Alignment.Center

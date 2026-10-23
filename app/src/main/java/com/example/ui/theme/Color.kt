@@ -9,6 +9,7 @@ val GenziiPurpleDark = Color(0xFF452B9E)
 val GenziiPurpleSoft = Color(0xFFEDE9FE)
 val GenziiPurpleContainer = Color(0xFFF3E8FF)
 val GenziiPurpleGlow = Color(0xFFA78BFA)
+val GenziiCyan = Color(0xFF00E5FF)
 
 // Neutral Colors
 val GenziiWhite = Color(0xFFFFFFFF)

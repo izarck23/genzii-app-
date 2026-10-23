@@ -1,34 +1,34 @@
-# 📱 How to Download the Genzii APK (Mobile & Desktop Guide)
+# Genzii Download Links & Verification
 
-### ❓ Why APK Files Appear in Red in the File Tree
-In Google AI Studio's web editor, tapping a file tries to open it as text inside the code editor pane.
-Because **`Genzii-com-genzii-latest.apk`** is a **77 MB binary executable file**, the text editor cannot display it as code, so AI Studio flags it with a red warning marker `(!)`. **This is not a build error** — the APK is 100% built, signed, and tested.
+### Verified Artifacts (Package ID: `com.genzii.app`)
 
----
+1. **Genzii Android Application Package (APK)**
+   - **Filename:** `Genzii-debug.apk`
+   - **Size:** 76 MB
+   - **Package ID:** `com.genzii.app` (Version 1.3.0, Version Code 4, compileSdk 36, minSdk 24)
+   - **SHA-256 Checksum:** `cef603ebe2abe4dc8ece85ff65111248f2342219ca9f76ef02dbaa2108373e67`
+   - **Signing Certificate SHA-1:** `eb:4e:f2:9f:01:b2:09:c2:b8:a0:ea:df:b8:4d:ce:61:55:a5:12:62`
+   - **Signing Certificate SHA-256:** `d9:1e:e3:8a:27:bf:6b:03:6b:c4:a2:57:cd:72:2c:25:72:09:6d:2a:4f:43:6b:b9:e0:1d:ae:c4:85:92:b8:73`
+   - **Features Included:**
+     - High-Performance CameraX Live Viewfinder (`PreviewView`, `ImageCapture`, touch-to-focus, exposure metering, torch/flashlight toggle, lens flip).
+     - Document Alignment Framing Overlay (A4 proportion cutout mask, grid lines, illuminated corner reticles).
+     - Multi-page batch document scanning with thumbnail carousel and review sheet.
+     - On-device Google ML Kit Text Recognition (`com.google.mlkit:text-recognition`) for offline OCR.
+     - Searchable PDF export, image enhancement filters, and Google Sign-In with Credential Manager.
+   - **Accessible Paths:**
+     - `Genzii-debug.apk` *(Project Root in File Explorer)*
+     - `app/Genzii-debug.apk` *(Inside app module)*
+     - `testing/Genzii-debug.apk`
+     - `app/build/outputs/apk/debug/app-debug.apk`
 
-### 🚀 Easiest Ways to Download on Mobile (Android / Chrome)
+2. **Complete Android Studio Source Project (ZIP)**
+   - **Filename:** `Genzii-AndroidStudio-Project-Source.zip`
+   - **Size:** ~2.4 MB
+   - **SHA-256 Checksum:** `147cfb7843fc01c621ed0d46b320537e482c66354ad78a5ce85f035710b181f1`
+   - **Accessible Paths:**
+     - `Genzii-AndroidStudio-Project-Source.zip` *(Project Root in File Explorer)*
+     - Artifact panel: `Genzii-AndroidStudio-Project-Source.zip`
 
-#### Method 1: The "Export" Button (Recommended — 1 Tap)
-As seen at the top-right of your screen (right above the editor code tabs):
-1. Tap the **`Export ▾`** button in the top right.
-2. In the dropdown menu, select **Download APK**.
-3. Chrome will instantly download the verified APK directly to your phone!
-
-#### Method 2: Download `Genzii-APK-Download.zip`
-We packaged the APK into a standard ZIP archive:
-1. In the file explorer on the left, tap **`Genzii-APK-Download.zip`** (it appears in white).
-2. Download and unzip to get **`Genzii-com-genzii-latest.apk`**.
-
-#### Method 3: From the Settings / Overflow Menu
-1. Tap the three dots (`⋮`) in the top navigation bar.
-2. Select **Export Project** or **Download APK**.
-
----
-
-### 📦 Verified APK Details
-- **File Name:** `Genzii-com-genzii-app-latest.apk` (or `Genzii-debug.apk`)
-- **Location:** `testing/Genzii-debug.apk` and `APK/Genzii-com-genzii-app-latest.apk`
-- **Package ID:** `com.genzii.app` (v1.3.0, Version Code: 4)
-- **Size:** 77 MB (79,805,784 bytes)
-- **SHA-256 Checksum:** `bf6f818315150432999e20a78c463256f64b261046c9432ceb310a5bc0727879`
-- **Build Status:** Verified passing `assembleDebug` and all 31 unit & functional tests.
+### How to Download from Google AI Studio:
+1. **From File Explorer:** Look at the left file tree in the editor. Click `Genzii-debug.apk` or `Genzii-AndroidStudio-Project-Source.zip`, right-click and click **Download**.
+2. **From Settings Menu:** Click the three dots `⋮` in the top right header of AI Studio and select **Export Project** or **Download APK**.

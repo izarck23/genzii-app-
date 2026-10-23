@@ -55,6 +55,7 @@ sealed class Screen(val route: String) {
   }
   object PdfTools : Screen("pdf_tools")
   object OcrScanner : Screen("ocr_scanner")
+  object CameraXScanner : Screen("camerax_scanner")
   object UrlChecker : Screen("url_checker")
   object WritingTools : Screen("writing_tools")
   object StudyAssistant : Screen("study_assistant")
@@ -427,6 +428,15 @@ fun GenziiNavGraph(
 
     composable(Screen.OcrScanner.route) {
       OcrScannerScreen(onBack = { navController.popBackStack() })
+    }
+
+    composable(Screen.CameraXScanner.route) {
+      CameraXDocumentScannerScreen(
+        onClose = { navController.popBackStack() },
+        onPagesCaptured = { _ ->
+          navController.popBackStack()
+        }
+      )
     }
 
     composable(Screen.UrlChecker.route) {
