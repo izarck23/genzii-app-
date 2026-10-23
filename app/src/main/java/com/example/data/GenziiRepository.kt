@@ -114,7 +114,10 @@ object GenziiRepository {
     name: String,
     content: String,
     folder: String = "Personal",
-    type: FileType = FileType.PDF
+    type: FileType = FileType.PDF,
+    localFilePath: String? = null,
+    uriString: String? = null,
+    pageCount: Int = 1
   ): DocumentItem {
     val sizeKb = (content.length * 1.5).toInt().coerceAtLeast(12)
     val sizeStr = if (sizeKb > 1024) "${String.format("%.1f", sizeKb / 1024.0)} MB" else "$sizeKb KB"
@@ -128,7 +131,10 @@ object GenziiRepository {
       originalityScore = null,
       isEncrypted = true,
       content = content,
-      isStarred = false
+      isStarred = false,
+      localFilePath = localFilePath,
+      uriString = uriString,
+      pageCount = pageCount
     )
     _documents.update { listOf(newDoc) + it }
     _userProfile.update { it.copy(docsCount = it.docsCount + 1) }
@@ -234,7 +240,10 @@ object GenziiRepository {
     sizeBytes: Long,
     fileType: FileType,
     content: String,
-    folder: String = "Research Papers"
+    folder: String = "Research Papers",
+    localFilePath: String? = null,
+    uriString: String? = null,
+    pageCount: Int = 1
   ): DocumentItem {
     val doc = DocumentItem(
       id = "doc-${UUID.randomUUID().toString().take(8)}",
@@ -246,7 +255,10 @@ object GenziiRepository {
       originalityScore = null,
       isEncrypted = true,
       content = content,
-      isStarred = false
+      isStarred = false,
+      localFilePath = localFilePath,
+      uriString = uriString,
+      pageCount = pageCount
     )
     _documents.update { listOf(doc) + it }
     val addedGb = (sizeBytes / (1024.0 * 1024.0 * 1024.0)).coerceAtLeast(0.01)

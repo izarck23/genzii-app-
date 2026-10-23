@@ -57,6 +57,7 @@ import com.example.model.FileType
 import com.example.ocr.*
 import com.example.ui.theme.*
 import com.example.util.PdfExportManager
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -954,15 +955,26 @@ fun OcrScannerScreen(onBack: () -> Unit) {
           onClick = {
             val fullText = document.combinedText().ifBlank { "Scanned document text" }
             val fileName = "${document.title}.pdf"
-            GenziiRepository.addImportedDocument(
-              name = fileName,
-              sizeFormatted = "${(fullText.length * 2) / 1024 + 1} KB",
-              sizeBytes = (fullText.length * 2L) + 1024L,
-              fileType = FileType.PDF,
-              content = fullText,
-              folder = "Vault"
-            )
-            Toast.makeText(context, "Saved & encrypted in Genzii Secure Vault!", Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+              val vaultDir = File(context.filesDir, "vault_documents").apply { mkdirs() }
+              val cleanName = document.title.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+              val vaultFile = File(vaultDir, "${System.currentTimeMillis()}_$cleanName.pdf")
+              val genResult = SearchablePdfGenerator.generateSearchablePdf(context, document, vaultFile)
+              val savedFile = genResult.getOrNull() ?: vaultFile
+              val sizeBytes = if (savedFile.exists()) savedFile.length() else (fullText.length * 2L) + 1024L
+              val sizeFormatted = "${(sizeBytes / 1024).coerceAtLeast(1)} KB"
+              GenziiRepository.addImportedDocument(
+                name = fileName,
+                sizeFormatted = sizeFormatted,
+                sizeBytes = sizeBytes,
+                fileType = FileType.PDF,
+                content = fullText,
+                folder = "Vault",
+                localFilePath = if (savedFile.exists()) savedFile.absolutePath else null,
+                pageCount = document.pages.size.coerceAtLeast(1)
+              )
+              Toast.makeText(context, "Saved & encrypted in Genzii Secure Vault!", Toast.LENGTH_SHORT).show()
+            }
           },
           modifier = Modifier
             .weight(1f)

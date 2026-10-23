@@ -86,8 +86,9 @@ fun OriginalityCheckerScreen(
           val fileInfo = FileUtils.readPickedFile(context, uri)
           documentTitle = fileInfo.name
           textInput = fileInfo.content
+          Toast.makeText(context, "Loaded: ${fileInfo.name} (${fileInfo.content.length} chars)", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-          // Keep existing content
+          Toast.makeText(context, "Could not read file: ${e.message}", Toast.LENGTH_LONG).show()
         }
       }
     }

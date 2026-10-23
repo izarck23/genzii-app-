@@ -1,5 +1,5 @@
 {
-  "summary": "Verified direct access links and instructions for downloading Genzii-com-genzii-latest.apk (76 MB) and Genzii-AndroidStudio-Project-Source.zip (2.3 MB).",
-  "updatedAt": "2026-10-18T07:48:47.837559041Z",
-  "userFacing": true
+  "summary":  "Genzii package ID migration to com.genzii.app and real file display fix verification, APK download paths, and SHA-256 checksums.",
+  "updatedAt":  "2026-10-23T13:29:28.093548645Z",
+  "userFacing":  true
 }

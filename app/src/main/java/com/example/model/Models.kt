@@ -16,7 +16,10 @@ data class DocumentItem(
   val content: String = "",
   val isStarred: Boolean = false,
   val thumbnailUri: String? = null,
-  val isDeviceFile: Boolean = false
+  val isDeviceFile: Boolean = false,
+  val localFilePath: String? = null,
+  val uriString: String? = null,
+  val pageCount: Int = 1
 )
 
 data class SourceMatch(

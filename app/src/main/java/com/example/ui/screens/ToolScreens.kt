@@ -3,8 +3,12 @@ package com.example.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.util.Log
 import android.widget.Toast
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,7 +62,6 @@ import com.example.util.PdfToolsEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 data class ToolGridItem(
   val title: String,
@@ -809,12 +812,34 @@ fun PdfToolsScreen(onBack: () -> Unit, onNavigateToOcr: () -> Unit = {}) {
             OutlinedButton(
               onClick = {
                 file?.let { target ->
+                  val vaultDir = File(context.filesDir, "vault_documents").apply { mkdirs() }
+                  val vaultFile = File(vaultDir, "${System.currentTimeMillis()}_${target.name}")
+                  try {
+                    target.copyTo(vaultFile, overwrite = true)
+                  } catch (e: Exception) {
+                    Log.e("ToolScreens", "Could not copy to vault_documents", e)
+                  }
+                  val persistentPath = if (vaultFile.exists()) vaultFile.absolutePath else target.absolutePath
+                  var pages = 1
+                  if (target.name.endsWith(".pdf", ignoreCase = true)) {
+                    try {
+                      val pfd = ParcelFileDescriptor.open(vaultFile.takeIf { it.exists() } ?: target, ParcelFileDescriptor.MODE_READ_ONLY)
+                      val renderer = PdfRenderer(pfd)
+                      pages = renderer.pageCount.coerceAtLeast(1)
+                      renderer.close()
+                      pfd.close()
+                    } catch (_: Exception) {}
+                  }
+
                   GenziiRepository.addImportedDocument(
                     name = target.name,
                     sizeFormatted = formatBytes(target.length()),
                     sizeBytes = target.length(),
                     fileType = if (target.name.endsWith(".txt")) FileType.TXT else FileType.PDF,
-                    content = if (target.name.endsWith(".txt")) target.readText() else "Processed PDF document: ${target.name}"
+                    content = if (target.name.endsWith(".txt")) target.readText() else "Processed PDF document: ${target.name}",
+                    folder = "Vault",
+                    localFilePath = persistentPath,
+                    pageCount = pages
                   )
                   Toast.makeText(context, "Saved to Secure Vault!", Toast.LENGTH_SHORT).show()
                 }

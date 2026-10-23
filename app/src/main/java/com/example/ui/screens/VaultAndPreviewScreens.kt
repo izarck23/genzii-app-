@@ -1,7 +1,15 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -71,7 +79,10 @@ fun VaultScreen(
           sizeBytes = fileInfo.sizeBytes,
           fileType = fileInfo.fileType,
           content = fileInfo.content,
-          folder = "Personal"
+          folder = "Personal",
+          localFilePath = fileInfo.localFilePath,
+          uriString = fileInfo.uriString,
+          pageCount = fileInfo.pageCount
         )
       }
     }
@@ -394,10 +405,20 @@ fun VaultScreen(
           Button(
             onClick = {
               if (newTitle.isNotBlank()) {
+                val cleanTitle = newTitle.trim()
+                val vaultDir = File(context.filesDir, "vault_documents").apply { mkdirs() }
+                val ext = if (cleanTitle.contains(".")) cleanTitle.substringAfterLast('.').lowercase() else "txt"
+                val fileType = if (ext == "pdf") FileType.PDF else FileType.TXT
+                val noteFile = File(vaultDir, "${System.currentTimeMillis()}_${cleanTitle.replace(Regex("[^a-zA-Z0-9._-]"), "_")}")
+                noteFile.writeText(newContent, Charsets.UTF_8)
                 GenziiRepository.addDocument(
-                  name = newTitle.trim(),
+                  name = cleanTitle,
                   content = newContent,
-                  folder = selectedFolder
+                  folder = selectedFolder,
+                  type = fileType,
+                  localFilePath = noteFile.absolutePath,
+                  uriString = android.net.Uri.fromFile(noteFile).toString(),
+                  pageCount = 1
                 )
                 showAddFileDialog = false
               }
@@ -587,7 +608,11 @@ fun FilePreviewScreen(
     if (uri != null && doc != null) {
       coroutineScope.launch(Dispatchers.IO) {
         try {
-          if (doc.type == FileType.PDF && doc.content.startsWith("%PDF")) {
+          if (doc.localFilePath != null && File(doc.localFilePath).exists()) {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+              File(doc.localFilePath).inputStream().use { input -> input.copyTo(out) }
+            }
+          } else if (doc.type == FileType.PDF && doc.content.startsWith("%PDF")) {
             context.contentResolver.openOutputStream(uri)?.use { out ->
               out.write(doc.content.toByteArray())
             }
@@ -602,7 +627,7 @@ fun FilePreviewScreen(
             }
           }
           withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Exported successfully as PDF!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Exported successfully!", Toast.LENGTH_SHORT).show()
           }
         } catch (e: Exception) {
           withContext(Dispatchers.Main) {
@@ -684,13 +709,35 @@ fun FilePreviewScreen(
         ) {
           BottomActionItem(label = "Share", icon = Icons.Outlined.Share) {
             try {
-              val sendIntent = Intent().apply {
-                action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_SUBJECT, doc.name)
-                putExtra(Intent.EXTRA_TEXT, doc.content)
-                type = "text/plain"
+              if (doc.localFilePath != null && File(doc.localFilePath).exists()) {
+                val file = File(doc.localFilePath)
+                val shareUri = androidx.core.content.FileProvider.getUriForFile(
+                  context,
+                  "${context.packageName}.fileprovider",
+                  file
+                )
+                val mimeType = when (doc.type) {
+                  FileType.PDF -> "application/pdf"
+                  FileType.IMAGE -> "image/*"
+                  FileType.DOCX -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  else -> "text/plain"
+                }
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                  putExtra(Intent.EXTRA_STREAM, shareUri)
+                  putExtra(Intent.EXTRA_SUBJECT, doc.name)
+                  type = mimeType
+                  addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(sendIntent, "Share Document"))
+              } else {
+                val sendIntent = Intent().apply {
+                  action = Intent.ACTION_SEND
+                  putExtra(Intent.EXTRA_SUBJECT, doc.name)
+                  putExtra(Intent.EXTRA_TEXT, doc.content)
+                  type = "text/plain"
+                }
+                context.startActivity(Intent.createChooser(sendIntent, "Share Document via"))
               }
-              context.startActivity(Intent.createChooser(sendIntent, "Share Document via"))
             } catch (e: Exception) {
               Toast.makeText(context, "Share error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -701,11 +748,15 @@ fun FilePreviewScreen(
           }
           BottomActionItem(label = "Print", icon = Icons.Outlined.Print) {
             coroutineScope.launch {
-              val genResult = PdfExportManager.generateDocumentPdf(context, doc.name, doc.content)
-              if (genResult.isSuccess) {
-                PdfExportManager.printPdfFile(context, doc.name, genResult.getOrThrow())
+              if (doc.localFilePath != null && File(doc.localFilePath).exists() && doc.type == FileType.PDF) {
+                PdfExportManager.printPdfFile(context, doc.name, File(doc.localFilePath))
               } else {
-                Toast.makeText(context, "Print preparation failed: ${genResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                val genResult = PdfExportManager.generateDocumentPdf(context, doc.name, doc.content)
+                if (genResult.isSuccess) {
+                  PdfExportManager.printPdfFile(context, doc.name, genResult.getOrThrow())
+                } else {
+                  Toast.makeText(context, "Print preparation failed: ${genResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                }
               }
             }
           }
@@ -758,39 +809,15 @@ fun FilePreviewScreen(
       Spacer(modifier = Modifier.height(14.dp))
 
       if (selectedTab == 0) {
-        // Document Page Viewer (Screen 18 Preview tab)
-        Card(
-          shape = RoundedCornerShape(16.dp),
-          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-          elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        RealDocumentViewer(
+          doc = doc,
+          isEditing = isEditing,
+          editedContent = editedContent,
+          onEditedContentChange = { editedContent = it },
           modifier = Modifier
             .fillMaxWidth()
             .weight(1f)
-        ) {
-          Column(
-            modifier = Modifier
-              .fillMaxSize()
-              .padding(16.dp)
-              .verticalScroll(rememberScrollState())
-          ) {
-            if (isEditing) {
-              OutlinedTextField(
-                value = editedContent,
-                onValueChange = { editedContent = it },
-                modifier = Modifier.fillMaxSize(),
-                label = { Text("Editing Content") }
-              )
-            } else {
-              Text(
-                text = doc.content,
-                fontFamily = PoppinsFontFamily,
-                fontSize = 14.sp,
-                lineHeight = 22.sp,
-                color = MaterialTheme.colorScheme.onBackground
-              )
-            }
-          }
-        }
+        )
       } else {
         // Details Tab
         Card(
@@ -945,3 +972,462 @@ fun VaultFolderViewScreen(
     }
   }
 }
+
+@Composable
+fun RealDocumentViewer(
+  doc: DocumentItem,
+  isEditing: Boolean,
+  editedContent: String,
+  onEditedContentChange: (String) -> Unit,
+  modifier: Modifier = Modifier
+) {
+  if (isEditing) {
+    Card(
+      shape = RoundedCornerShape(16.dp),
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+      elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+      modifier = modifier
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(16.dp)
+          .verticalScroll(rememberScrollState())
+      ) {
+        OutlinedTextField(
+          value = editedContent,
+          onValueChange = onEditedContentChange,
+          modifier = Modifier.fillMaxSize(),
+          label = { Text("Editing Content") }
+        )
+      }
+    }
+  } else {
+    val localFile = remember(doc.localFilePath) {
+      doc.localFilePath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+    }
+
+    when {
+      doc.type == FileType.PDF && localFile != null -> {
+        RealPdfViewer(
+          file = localFile,
+          fallbackText = doc.content,
+          modifier = modifier
+        )
+      }
+      doc.type == FileType.IMAGE && localFile != null -> {
+        RealImageViewer(
+          file = localFile,
+          ocrText = doc.content,
+          modifier = modifier
+        )
+      }
+      else -> {
+        RealTextDocumentViewer(
+          content = doc.content,
+          fileType = doc.type,
+          fileName = doc.name,
+          modifier = modifier
+        )
+      }
+    }
+  }
+}
+
+@Composable
+fun RealPdfViewer(
+  file: File,
+  fallbackText: String,
+  modifier: Modifier = Modifier
+) {
+  var currentPageIndex by remember { mutableStateOf(0) }
+  var totalPages by remember { mutableStateOf(1) }
+  var pageBitmap by remember { mutableStateOf<Bitmap?>(null) }
+  var isLoading by remember { mutableStateOf(true) }
+  var errorMessage by remember { mutableStateOf<String?>(null) }
+  var viewMode by remember { mutableStateOf(0) } // 0 = Rendered Page, 1 = Extracted Text
+
+  LaunchedEffect(file.absolutePath, currentPageIndex) {
+    isLoading = true
+    errorMessage = null
+    withContext(Dispatchers.IO) {
+      var pfd: ParcelFileDescriptor? = null
+      var renderer: PdfRenderer? = null
+      var page: PdfRenderer.Page? = null
+      try {
+        if (!file.exists() || file.length() == 0L) {
+          throw java.io.FileNotFoundException("PDF file does not exist or is empty: ${file.name}")
+        }
+        pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        renderer = PdfRenderer(pfd)
+        val count = renderer.pageCount
+        withContext(Dispatchers.Main) {
+          totalPages = count.coerceAtLeast(1)
+        }
+        val safeIndex = currentPageIndex.coerceIn(0, (count - 1).coerceAtLeast(0))
+        page = renderer.openPage(safeIndex)
+        val scale = 2f
+        val bmpWidth = (page.width * scale).toInt().coerceIn(300, 2400)
+        val bmpHeight = (page.height * scale).toInt().coerceIn(400, 3600)
+        val bitmap = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        withContext(Dispatchers.Main) {
+          pageBitmap = bitmap
+          isLoading = false
+        }
+      } catch (e: Exception) {
+        Log.e("RealPdfViewer", "Error rendering PDF page", e)
+        withContext(Dispatchers.Main) {
+          errorMessage = e.message ?: "Failed to render PDF page"
+          isLoading = false
+        }
+      } finally {
+        try { page?.close() } catch (_: Exception) {}
+        try { renderer?.close() } catch (_: Exception) {}
+        try { pfd?.close() } catch (_: Exception) {}
+      }
+    }
+  }
+
+  Card(
+    shape = RoundedCornerShape(16.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    modifier = modifier
+  ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+      // PDF Toolbar Controls
+      Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          // Page Navigation
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+              onClick = { if (currentPageIndex > 0) currentPageIndex-- },
+              enabled = currentPageIndex > 0,
+              modifier = Modifier.size(32.dp)
+            ) {
+              Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Page")
+            }
+            Text(
+              text = "Page ${currentPageIndex + 1} of $totalPages",
+              style = MaterialTheme.typography.bodySmall,
+              fontWeight = FontWeight.Bold,
+              color = GenziiPurple,
+              modifier = Modifier.padding(horizontal = 6.dp)
+            )
+            IconButton(
+              onClick = { if (currentPageIndex < totalPages - 1) currentPageIndex++ },
+              enabled = currentPageIndex < totalPages - 1,
+              modifier = Modifier.size(32.dp)
+            ) {
+              Icon(Icons.Default.ChevronRight, contentDescription = "Next Page")
+            }
+          }
+
+          // View mode toggle (Page vs Text)
+          Row(
+            modifier = Modifier
+              .clip(RoundedCornerShape(8.dp))
+              .background(MaterialTheme.colorScheme.background)
+              .padding(2.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (viewMode == 0) GenziiPurple else Color.Transparent)
+                .clickable { viewMode = 0 }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+              Text(
+                "Page",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (viewMode == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (viewMode == 1) GenziiPurple else Color.Transparent)
+                .clickable { viewMode = 1 }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+              Text(
+                "Text",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (viewMode == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          }
+        }
+      }
+
+      // Content Area
+      if (viewMode == 0) {
+        Box(
+          modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          if (isLoading) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+              CircularProgressIndicator(color = GenziiPurple, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+              Spacer(modifier = Modifier.height(8.dp))
+              Text("Rendering PDF page...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+          } else if (errorMessage != null || pageBitmap == null) {
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+              modifier = Modifier.padding(16.dp)
+            ) {
+              Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(40.dp))
+              Spacer(modifier = Modifier.height(8.dp))
+              Text("Could not render page image: ${errorMessage ?: "Unknown error"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+              Spacer(modifier = Modifier.height(8.dp))
+              OutlinedButton(onClick = { viewMode = 1 }) {
+                Text("View Extracted Text", fontSize = 12.sp)
+              }
+            }
+          } else {
+            Image(
+              bitmap = pageBitmap!!.asImageBitmap(),
+              contentDescription = "PDF Page ${currentPageIndex + 1}",
+              modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+              contentScale = androidx.compose.ui.layout.ContentScale.FillWidth
+            )
+          }
+        }
+      } else {
+        Column(
+          modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+        ) {
+          Text(
+            text = fallbackText.ifBlank { "No text content found in this PDF." },
+            fontFamily = PoppinsFontFamily,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = MaterialTheme.colorScheme.onBackground
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+fun RealImageViewer(
+  file: File,
+  ocrText: String,
+  modifier: Modifier = Modifier
+) {
+  var selectedTab by remember { mutableStateOf(0) } // 0 = Image, 1 = OCR Text
+  val bitmap = remember(file.absolutePath) {
+    try {
+      if (file.exists() && file.length() > 0L) {
+        BitmapFactory.decodeFile(file.absolutePath)
+      } else null
+    } catch (e: Exception) {
+      Log.e("RealImageViewer", "Failed to decode image file", e)
+      null
+    }
+  }
+
+  Card(
+    shape = RoundedCornerShape(16.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    modifier = modifier
+  ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+      // Image vs OCR Tab bar
+      Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "Image Preview",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = GenziiPurple
+          )
+          Row(
+            modifier = Modifier
+              .clip(RoundedCornerShape(8.dp))
+              .background(MaterialTheme.colorScheme.background)
+              .padding(2.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (selectedTab == 0) GenziiPurple else Color.Transparent)
+                .clickable { selectedTab = 0 }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+              Text(
+                "Image",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (selectedTab == 1) GenziiPurple else Color.Transparent)
+                .clickable { selectedTab = 1 }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+              Text(
+                "OCR Text",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (selectedTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          }
+        }
+      }
+
+      if (selectedTab == 0) {
+        Box(
+          modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          if (bitmap != null) {
+            Image(
+              bitmap = bitmap.asImageBitmap(),
+              contentDescription = "Document Image Preview",
+              modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+              contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
+          } else {
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+              modifier = Modifier.padding(16.dp)
+            ) {
+              Icon(Icons.Default.Image, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(48.dp))
+              Spacer(modifier = Modifier.height(8.dp))
+              Text("Image preview unavailable or file missing", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+              if (ocrText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = { selectedTab = 1 }) {
+                  Text("View Recognized Text", fontSize = 12.sp)
+                }
+              }
+            }
+          }
+        }
+      } else {
+        Column(
+          modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+        ) {
+          Text(
+            text = ocrText.ifBlank { "No text recognized from this image." },
+            fontFamily = PoppinsFontFamily,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = MaterialTheme.colorScheme.onBackground
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+fun RealTextDocumentViewer(
+  content: String,
+  fileType: FileType,
+  fileName: String,
+  modifier: Modifier = Modifier
+) {
+  Card(
+    shape = RoundedCornerShape(16.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    modifier = modifier
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(16.dp)
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(bottom = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Surface(
+          color = GenziiPurpleContainer.copy(alpha = 0.5f),
+          shape = RoundedCornerShape(8.dp)
+        ) {
+          Text(
+            text = fileType.name,
+            color = GenziiPurple,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+          )
+        }
+        val words = remember(content) { content.split(Regex("\\s+")).count { it.isNotBlank() } }
+        Text(
+          text = "$words words • ${content.length} chars",
+          fontSize = 11.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
+
+      HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+      Spacer(modifier = Modifier.height(10.dp))
+
+      Column(
+        modifier = Modifier
+          .fillMaxSize()
+          .verticalScroll(rememberScrollState())
+      ) {
+        Text(
+          text = content.ifBlank { "Document is empty." },
+          fontFamily = PoppinsFontFamily,
+          fontSize = 14.sp,
+          lineHeight = 22.sp,
+          color = MaterialTheme.colorScheme.onBackground
+        )
+      }
+    }
+  }
+}
+

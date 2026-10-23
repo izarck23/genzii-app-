@@ -77,7 +77,10 @@ fun HomeScreen(
             sizeBytes = pickedInfo.sizeBytes,
             fileType = pickedInfo.fileType,
             content = pickedInfo.content,
-            folder = "Research Papers"
+            folder = "Research Papers",
+            localFilePath = pickedInfo.localFilePath,
+            uriString = pickedInfo.uriString,
+            pageCount = pickedInfo.pageCount
           )
           snackbarHostState.showSnackbar(
             message = "Uploaded '${addedDoc.name}' to Vault (${addedDoc.sizeFormatted})",
