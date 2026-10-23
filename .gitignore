@@ -15,5 +15,6 @@
 .cxx
 local.properties
 debug.keystore
+!debug.keystore.base64
 backup_*
 .build-outputs/

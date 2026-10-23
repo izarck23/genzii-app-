@@ -58,14 +58,16 @@ jobs:
           # Ensure debug.keystore exists with fallback to keytool
           if [ ! -f debug.keystore ]; then
             if [ -f debug.keystore.base64 ]; then
-              echo "Restoring debug.keystore from base64..."
-              base64 -d debug.keystore.base64 > debug.keystore || true
+              echo "Restoring debug.keystore from base64 (ignoring line wraps)..."
+              base64 -d -i debug.keystore.base64 > debug.keystore || base64 --decode debug.keystore.base64 > debug.keystore || true
             fi
             if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
               echo "Generating fresh debug.keystore..."
               keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
             fi
           fi
+          echo "Signing certificate fingerprints in debug.keystore:"
+          keytool -list -v -keystore debug.keystore -storepass android | grep -E "(Alias name|Owner|SHA1:|SHA256:)" || true
 
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
@@ -93,6 +95,8 @@ jobs:
           cp "$APK_PATH" testing/Genzii-debug.apk
           ls -lh testing/Genzii-debug.apk
           sha256sum testing/Genzii-debug.apk
+          echo "Verifying APK signing certificate fingerprints..."
+          keytool -list -v -keystore debug.keystore -storepass android | grep -E "(Alias name|Owner|SHA1:|SHA256:)" || true
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4

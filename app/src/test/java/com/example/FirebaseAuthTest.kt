@@ -47,4 +47,23 @@ class FirebaseAuthTest {
     val guestProfile = GenziiRepository.userProfile.value
     assertEquals("guest@genzii.app", guestProfile.email)
   }
+
+  @Test
+  fun testCredentialRequestBuilding() {
+    val serverClientId = FirebaseAuthManager.FIREBASE_WEB_CLIENT_ID
+    val signInOption = com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption.Builder(serverClientId)
+      .build()
+    val googleIdOption = com.google.android.libraries.identity.googleid.GetGoogleIdOption.Builder()
+      .setFilterByAuthorizedAccounts(false)
+      .setServerClientId(serverClientId)
+      .setAutoSelectEnabled(false)
+      .build()
+
+    val request = androidx.credentials.GetCredentialRequest.Builder()
+      .addCredentialOption(signInOption)
+      .addCredentialOption(googleIdOption)
+      .build()
+
+    assertEquals(2, request.credentialOptions.size)
+  }
 }

@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.data.GenziiRepository
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseNetworkException
@@ -208,11 +209,21 @@ object FirebaseAuthManager {
     }
   }
 
+  private fun findActivity(context: Context): android.app.Activity? {
+    var ctx = context
+    while (ctx is android.content.ContextWrapper) {
+      if (ctx is android.app.Activity) return ctx
+      ctx = ctx.baseContext
+    }
+    return null
+  }
+
   suspend fun signInWithGoogle(context: Context): AuthResult {
     val firebaseAuth = auth ?: return AuthResult.Error("Firebase Auth is not available. Please check configuration.")
 
     return try {
-      val credentialManager = CredentialManager.create(context)
+      val activityContext = findActivity(context) ?: context
+      val credentialManager = CredentialManager.create(activityContext)
 
       // Look up server client ID or use default Google Cloud project number clientId
       val webClientId = try {
@@ -222,6 +233,9 @@ object FirebaseAuthManager {
         FIREBASE_WEB_CLIENT_ID
       }
 
+      val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(webClientId)
+        .build()
+
       val googleIdOption = GetGoogleIdOption.Builder()
         .setFilterByAuthorizedAccounts(false)
         .setServerClientId(webClientId)
@@ -229,10 +243,11 @@ object FirebaseAuthManager {
         .build()
 
       val request = GetCredentialRequest.Builder()
+        .addCredentialOption(signInWithGoogleOption)
         .addCredentialOption(googleIdOption)
         .build()
 
-      val result = credentialManager.getCredential(context = context, request = request)
+      val result = credentialManager.getCredential(context = activityContext, request = request)
       val credential = result.credential
 
       if (credential is CustomCredential &&
@@ -257,8 +272,8 @@ object FirebaseAuthManager {
     } catch (e: GetCredentialCancellationException) {
       AuthResult.Cancelled
     } catch (e: NoCredentialException) {
-      Log.i(TAG, "No Google accounts available in CredentialManager: ${e.message}")
-      val friendly = "No Google account found on this device. Please sign in with email/password or select an account."
+      Log.w(TAG, "No Google accounts available or matching in CredentialManager: ${e.message}")
+      val friendly = "No matching Google account credentials found. Please verify that a Google account is active in your phone settings, or sign in with your email and password."
       _authError.value = friendly
       AuthResult.Error(friendly, e)
     } catch (e: Exception) {
