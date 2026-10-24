@@ -86,34 +86,7 @@ fun LoginScreen(
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
 
-      Spacer(modifier = Modifier.height(10.dp))
-
-      // Firebase Status Tag
-      Surface(
-        color = GenziiPurpleContainer.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(12.dp)
-      ) {
-        Row(
-          modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          Icon(
-            Icons.Default.Security,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-            tint = GenziiPurple
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Firebase Auth • genzii-5413c",
-            fontSize = 11.sp,
-            color = GenziiPurple,
-            fontWeight = FontWeight.Medium
-          )
-        }
-      }
-
-      Spacer(modifier = Modifier.height(24.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
       // Email field
       OutlinedTextField(
@@ -412,18 +385,26 @@ fun CreateAccountScreen(
         .navigationBarsPadding()
         .padding(horizontal = 24.dp)
         .verticalScroll(rememberScrollState()),
-      horizontalAlignment = Alignment.Start
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center
     ) {
-      Spacer(modifier = Modifier.height(8.dp))
-
-      IconButton(onClick = onBack) {
-        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+      Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart
+      ) {
+        IconButton(onClick = onBack) {
+          Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+        }
       }
 
-      Spacer(modifier = Modifier.height(12.dp))
+      Spacer(modifier = Modifier.height(8.dp))
+
+      GenziiLogo(logoSize = 44.dp)
+
+      Spacer(modifier = Modifier.height(20.dp))
 
       Text(
-        text = "Create your account",
+        text = "Create Account",
         style = MaterialTheme.typography.displayMedium,
         color = MaterialTheme.colorScheme.onBackground
       )
@@ -431,38 +412,200 @@ fun CreateAccountScreen(
       Spacer(modifier = Modifier.height(4.dp))
 
       Text(
-        text = "Join Genzii today for smarter writing & originality checking",
+        text = "Join Genzii for secure academic writing & analysis",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
 
-      Spacer(modifier = Modifier.height(10.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
-      Surface(
-        color = GenziiPurpleContainer.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(12.dp)
-      ) {
-        Row(
-          modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-          verticalAlignment = Alignment.CenterVertically
+      // Full Name field
+      OutlinedTextField(
+        value = fullName,
+        onValueChange = {
+          fullName = it
+          errorMessage = null
+        },
+        label = { Text("Full name") },
+        placeholder = { Text("Enter your full name") },
+        leadingIcon = {
+          Icon(Icons.Outlined.Person, contentDescription = null, tint = GenziiPurple)
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("signup_name_input"),
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+          focusedBorderColor = GenziiPurple,
+          unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+        )
+      )
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      // Email field
+      OutlinedTextField(
+        value = email,
+        onValueChange = {
+          email = it
+          errorMessage = null
+        },
+        label = { Text("Email address") },
+        placeholder = { Text("Enter your email address") },
+        leadingIcon = {
+          Icon(Icons.Outlined.Email, contentDescription = null, tint = GenziiPurple)
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("signup_email_input"),
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+          focusedBorderColor = GenziiPurple,
+          unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+        )
+      )
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      // Password field
+      OutlinedTextField(
+        value = password,
+        onValueChange = {
+          password = it
+          errorMessage = null
+        },
+        label = { Text("Password") },
+        placeholder = { Text("Create a password (min 6 characters)") },
+        leadingIcon = {
+          Icon(Icons.Outlined.Lock, contentDescription = null, tint = GenziiPurple)
+        },
+        trailingIcon = {
+          IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+            Icon(
+              imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+              contentDescription = "Toggle password visibility"
+            )
+          }
+        },
+        visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("signup_password_input"),
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+          focusedBorderColor = GenziiPurple,
+          unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+        )
+      )
+
+      if (errorMessage != null) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Card(
+          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)),
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier.fillMaxWidth()
         ) {
-          Icon(
-            Icons.Default.CloudDone,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-            tint = GenziiPurple
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Backend Firebase Auth • genzii-5413c",
-            fontSize = 11.sp,
-            color = GenziiPurple,
-            fontWeight = FontWeight.Medium
-          )
+          Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(
+              Icons.Default.ErrorOutline,
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.error,
+              modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = errorMessage ?: "",
+              color = MaterialTheme.colorScheme.onErrorContainer,
+              fontSize = 12.sp,
+              lineHeight = 16.sp
+            )
+          }
         }
       }
 
       Spacer(modifier = Modifier.height(20.dp))
+
+      // Create Account Button
+      Button(
+        onClick = {
+          if (fullName.isBlank()) {
+            errorMessage = "Please enter your full name"
+          } else if (email.isBlank() || !email.contains("@")) {
+            errorMessage = "Please enter a valid email address"
+          } else if (password.length < 6) {
+            errorMessage = "Password must be at least 6 characters"
+          } else {
+            isLoading = true
+            errorMessage = null
+            coroutineScope.launch {
+              when (val result = FirebaseAuthManager.signUpWithEmail(fullName, email, password)) {
+                is AuthResult.Success -> {
+                  isLoading = false
+                  Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                  onSignupSuccess(email.trim())
+                }
+                is AuthResult.Error -> {
+                  isLoading = false
+                  errorMessage = result.message
+                }
+                else -> {
+                  isLoading = false
+                }
+              }
+            }
+          }
+        },
+        enabled = !isLoading,
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(52.dp)
+          .testTag("signup_submit_button"),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = GenziiPurple,
+          contentColor = GenziiWhite
+        ),
+        shape = RoundedCornerShape(16.dp)
+      ) {
+        if (isLoading) {
+          CircularProgressIndicator(
+            modifier = Modifier.size(20.dp),
+            color = GenziiWhite,
+            strokeWidth = 2.dp
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Creating account...", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        } else {
+          Text("Create Account", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        }
+      }
+
+      Spacer(modifier = Modifier.height(16.dp))
+
+      // Divider
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+        Text(
+          text = "  or continue with  ",
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontSize = 12.sp,
+          fontFamily = PoppinsFontFamily
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+      }
+
+      Spacer(modifier = Modifier.height(16.dp))
 
       // Continue with Google Button
       OutlinedButton(
@@ -512,197 +655,30 @@ fun CreateAccountScreen(
         )
       }
 
-      Spacer(modifier = Modifier.height(18.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+      // Log In Navigation Button
+      OutlinedButton(
+        onClick = onNavigateToLogin,
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(50.dp)
+          .testTag("login_nav_button"),
+        shape = RoundedCornerShape(16.dp),
+        border = ButtonDefaults.outlinedButtonBorder.copy(
+          brush = androidx.compose.ui.graphics.SolidColor(GenziiPurple)
+        )
       ) {
-        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-        Text("  or sign up with email  ", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-      }
-
-      Spacer(modifier = Modifier.height(18.dp))
-
-      OutlinedTextField(
-        value = fullName,
-        onValueChange = {
-          fullName = it
-          errorMessage = null
-        },
-        label = { Text("Full name") },
-        placeholder = { Text("Enter your full name") },
-        leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null, tint = GenziiPurple) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-        modifier = Modifier
-          .fillMaxWidth()
-          .testTag("signup_name_input"),
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = GenziiPurple,
-          unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+        Text(
+          text = "Already have an account? Log In",
+          color = GenziiPurple,
+          fontFamily = PoppinsFontFamily,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 14.sp
         )
-      )
-
-      Spacer(modifier = Modifier.height(14.dp))
-
-      OutlinedTextField(
-        value = email,
-        onValueChange = {
-          email = it
-          errorMessage = null
-        },
-        label = { Text("Email address") },
-        placeholder = { Text("Enter your email address") },
-        leadingIcon = { Icon(Icons.Outlined.Email, contentDescription = null, tint = GenziiPurple) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-        modifier = Modifier
-          .fillMaxWidth()
-          .testTag("signup_email_input"),
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = GenziiPurple,
-          unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-        )
-      )
-
-      Spacer(modifier = Modifier.height(14.dp))
-
-      OutlinedTextField(
-        value = password,
-        onValueChange = {
-          password = it
-          errorMessage = null
-        },
-        label = { Text("Password") },
-        placeholder = { Text("Create a password (min 6 characters)") },
-        leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null, tint = GenziiPurple) },
-        trailingIcon = {
-          IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-            Icon(
-              imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-              contentDescription = null
-            )
-          }
-        },
-        visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        modifier = Modifier
-          .fillMaxWidth()
-          .testTag("signup_password_input"),
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = GenziiPurple,
-          unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-        )
-      )
-
-      if (errorMessage != null) {
-        Spacer(modifier = Modifier.height(10.dp))
-        Card(
-          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)),
-          shape = RoundedCornerShape(10.dp),
-          modifier = Modifier.fillMaxWidth()
-        ) {
-          Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              Icons.Default.ErrorOutline,
-              contentDescription = null,
-              tint = MaterialTheme.colorScheme.error,
-              modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = errorMessage ?: "",
-              color = MaterialTheme.colorScheme.onErrorContainer,
-              fontSize = 12.sp,
-              lineHeight = 16.sp
-            )
-          }
-        }
       }
 
       Spacer(modifier = Modifier.height(24.dp))
-
-      // Create Account Button with Firebase Auth
-      Button(
-        onClick = {
-          if (fullName.isBlank()) {
-            errorMessage = "Please enter your full name"
-          } else if (email.isBlank() || !email.contains("@")) {
-            errorMessage = "Please enter a valid email address"
-          } else if (password.length < 6) {
-            errorMessage = "Password must be at least 6 characters"
-          } else {
-            isLoading = true
-            errorMessage = null
-            coroutineScope.launch {
-              when (val result = FirebaseAuthManager.signUpWithEmail(fullName, email, password)) {
-                is AuthResult.Success -> {
-                  isLoading = false
-                  Toast.makeText(context, "Account created successfully! Verification email sent.", Toast.LENGTH_LONG).show()
-                  onSignupSuccess(email.trim())
-                }
-                is AuthResult.Error -> {
-                  isLoading = false
-                  errorMessage = result.message
-                }
-                else -> {
-                  isLoading = false
-                }
-              }
-            }
-          }
-        },
-        enabled = !isLoading,
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(52.dp)
-          .testTag("signup_submit_button"),
-        colors = ButtonDefaults.buttonColors(
-          containerColor = GenziiPurple,
-          contentColor = GenziiWhite
-        ),
-        shape = RoundedCornerShape(16.dp)
-      ) {
-        if (isLoading) {
-          CircularProgressIndicator(
-            modifier = Modifier.size(20.dp),
-            color = GenziiWhite,
-            strokeWidth = 2.dp
-          )
-          Spacer(modifier = Modifier.width(8.dp))
-          Text("Creating account...", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        } else {
-          Text("Create Account", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        }
-      }
-
-      Spacer(modifier = Modifier.height(16.dp))
-
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Text("Already have an account? ", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-        Text(
-          text = "Log in",
-          color = GenziiPurple,
-          fontWeight = FontWeight.Bold,
-          fontSize = 14.sp,
-          modifier = Modifier.clickable { onNavigateToLogin() }
-        )
-      }
-
-      Spacer(modifier = Modifier.height(32.dp))
     }
   }
 }
@@ -758,7 +734,7 @@ fun OtpVerificationScreen(
       Spacer(modifier = Modifier.height(8.dp))
 
       Text(
-        text = if (email.isNotBlank()) "A Firebase verification link & 6-digit code has been dispatched to\n$email" else "A Firebase verification link & code has been sent to your email",
+        text = if (email.isNotBlank()) "A verification link & security code has been dispatched to\n$email" else "A verification link & code has been sent to your email",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center
@@ -891,7 +867,7 @@ fun OtpVerificationScreen(
             resendCountdown = 60
             coroutineScope.launch {
               FirebaseAuthManager.resendVerificationEmail()
-              Toast.makeText(context, "Verification email resent via Firebase Auth", Toast.LENGTH_SHORT).show()
+              Toast.makeText(context, "Verification email resent successfully", Toast.LENGTH_SHORT).show()
             }
           }
         ) {
@@ -1170,7 +1146,7 @@ fun ResetPasswordScreen(
           }
         },
         text = {
-          Text("A password reset email has been sent to $email from Firebase project genzii-5413c. Please follow the instructions in the email to reset your password, then return to sign in.")
+          Text("A password reset email has been sent to $email. Please follow the instructions in the email to reset your password, then return to sign in.")
         },
         confirmButton = {
           Button(

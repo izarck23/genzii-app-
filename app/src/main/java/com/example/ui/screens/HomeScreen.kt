@@ -116,8 +116,8 @@ fun HomeScreen(
         modifier = Modifier.testTag("dashboard_fab_upload")
       ) {
         Icon(
-          imageVector = Icons.Default.CloudUpload,
-          contentDescription = "Upload Document"
+          imageVector = Icons.Default.Add,
+          contentDescription = "Add Document"
         )
       }
     },
@@ -623,7 +623,7 @@ fun RecentActivityCard(
         .padding(14.dp),
       verticalAlignment = Alignment.CenterVertically
     ) {
-      FileTypeIcon(type = doc.type)
+      DocumentThumbnailView(doc = doc)
 
       Spacer(modifier = Modifier.width(12.dp))
 

@@ -510,21 +510,32 @@ object GenziiRepository {
     }
   }
 
-  fun updateProfile(name: String, email: String, role: String) {
+  fun updateProfile(
+    name: String,
+    email: String,
+    role: String,
+    institution: String? = null,
+    department: String? = null,
+    studentId: String? = null
+  ) {
     _userProfile.update {
       it.copy(
         name = name.trim().ifEmpty { it.name },
         email = email.trim().ifEmpty { it.email },
-        role = role.trim().ifEmpty { it.role }
+        role = role.trim().ifEmpty { it.role },
+        institution = institution?.trim()?.ifEmpty { it.institution } ?: it.institution,
+        department = department?.trim()?.ifEmpty { it.department } ?: it.department,
+        studentId = studentId?.trim()?.ifEmpty { it.studentId } ?: it.studentId
       )
     }
   }
 
-  fun signIn(email: String, name: String) {
+  fun signIn(email: String, name: String, photoUrl: String? = null) {
     _userProfile.update {
       it.copy(
         name = if (name.isNotBlank()) name else it.name,
-        email = if (email.isNotBlank()) email else it.email
+        email = if (email.isNotBlank()) email else it.email,
+        photoUrl = photoUrl ?: it.photoUrl
       )
     }
   }

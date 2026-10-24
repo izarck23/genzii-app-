@@ -99,13 +99,28 @@ fun ProfileScreen(
             .border(2.5.dp, GenziiPurple, CircleShape),
           contentAlignment = Alignment.Center
         ) {
-          Text(
-            text = userProfile.name.split(" ").mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString("").ifEmpty { "JD" },
-            fontFamily = PoppinsFontFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 28.sp,
-            color = GenziiPurple
-          )
+          if (!userProfile.photoUrl.isNullOrBlank()) {
+            coil.compose.AsyncImage(
+              model = userProfile.photoUrl,
+              contentDescription = "User profile photo",
+              contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+              modifier = Modifier.fillMaxSize()
+            )
+          } else {
+            val initials = remember(userProfile.name, userProfile.email) {
+              val parts = userProfile.name.split(" ").filter { it.isNotBlank() }
+              val fromName = parts.mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString("")
+              if (fromName.isNotBlank() && fromName != "S") fromName
+              else userProfile.email.take(2).uppercase().ifBlank { "U" }
+            }
+            Text(
+              text = initials,
+              fontFamily = PoppinsFontFamily,
+              fontWeight = FontWeight.Bold,
+              fontSize = 28.sp,
+              color = GenziiPurple
+            )
+          }
         }
 
         Box(
@@ -413,7 +428,7 @@ fun ProfileScreen(
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
           Text(
-            text = "Genzii App Version 1.2.0 • Build 3",
+            text = "Genzii v1.3.0",
             fontFamily = PoppinsFontFamily,
             fontWeight = FontWeight.SemiBold,
             fontSize = 12.sp,
@@ -421,7 +436,7 @@ fun ProfileScreen(
           )
           Spacer(modifier = Modifier.height(2.dp))
           Text(
-            text = "Functional Release • Google Test Ads Active • All Features Unlocked",
+            text = "Encrypted Workspace • All Features Active",
             fontSize = 11.sp,
             color = GenziiPurple,
             fontWeight = FontWeight.Medium
@@ -437,18 +452,24 @@ fun ProfileScreen(
       var editName by remember { mutableStateOf(userProfile.name) }
       var editEmail by remember { mutableStateOf(userProfile.email) }
       var editRole by remember { mutableStateOf(userProfile.role) }
+      var editInstitution by remember { mutableStateOf(userProfile.institution) }
+      var editDepartment by remember { mutableStateOf(userProfile.department) }
+      var editStudentId by remember { mutableStateOf(userProfile.studentId) }
 
       AlertDialog(
         onDismissRequest = { showEditProfileDialog = false },
         title = {
           Text(
-            text = "Edit Profile",
+            text = "Edit Profile & Credentials",
             fontFamily = PoppinsFontFamily,
             fontWeight = FontWeight.Bold
           )
         },
         text = {
-          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
             OutlinedTextField(
               value = editName,
               onValueChange = { editName = it },
@@ -470,12 +491,40 @@ fun ProfileScreen(
               singleLine = true,
               modifier = Modifier.fillMaxWidth()
             )
+            OutlinedTextField(
+              value = editInstitution,
+              onValueChange = { editInstitution = it },
+              label = { Text("Institution / University") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+              value = editDepartment,
+              onValueChange = { editDepartment = it },
+              label = { Text("Department / Field") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+              value = editStudentId,
+              onValueChange = { editStudentId = it },
+              label = { Text("Student / Researcher ID") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
           }
         },
         confirmButton = {
           Button(
             onClick = {
-              GenziiRepository.updateProfile(editName, editEmail, editRole)
+              GenziiRepository.updateProfile(
+                name = editName,
+                email = editEmail,
+                role = editRole,
+                institution = editInstitution,
+                department = editDepartment,
+                studentId = editStudentId
+              )
               showEditProfileDialog = false
             },
             colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)

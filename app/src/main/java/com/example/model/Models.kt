@@ -73,30 +73,31 @@ enum class SubscriptionTier {
 }
 
 data class UserProfile(
-  val name: String = "John Doe",
-  val email: String = "john.doe@example.com",
-  val role: String = "Research Fellow & Graduate Student",
-  val institution: String = "Stanford University",
-  val department: String = "Computer Science & Artificial Intelligence",
-  val studentId: String = "GZ-92041",
-  val memberSince: String = "September 2026",
+  val name: String = "Scholar",
+  val email: String = "",
+  val role: String = "Student / Researcher",
+  val institution: String = "Academic Institution",
+  val department: String = "Research & Studies",
+  val studentId: String = "Member",
+  val memberSince: String = "2026",
   val tier: SubscriptionTier = SubscriptionTier.FREE,
-  val checksLeft: Int = 20,
-  val totalChecks: Int = 20,
-  val checksCount: Int = 12,
-  val docsCount: Int = 8,
-  val chatsCount: Int = 3,
-  val usedStorageGb: Double = 4.2,
-  val totalStorageGb: Double = 10.0,
+  val checksLeft: Int = 10,
+  val totalChecks: Int = 10,
+  val checksCount: Int = 0,
+  val docsCount: Int = 0,
+  val chatsCount: Int = 0,
+  val usedStorageGb: Double = 0.0,
+  val totalStorageGb: Double = 5.0,
   val isAppLockEnabled: Boolean = false,
-  val isTwoFactorEnabled: Boolean = true,
+  val isTwoFactorEnabled: Boolean = false,
   val themeMode: ThemeMode = ThemeMode.SYSTEM,
   val rewardedAdsWatched: Int = 0,
   val isCloudAiConsentGranted: Boolean = false,
   val customApiKey: String = "",
   val useStreaming: Boolean = true,
   val temperature: Float = 0.4f,
-  val hasCompletedPermissionsOnboarding: Boolean = false
+  val hasCompletedPermissionsOnboarding: Boolean = false,
+  val photoUrl: String? = null
 )
 
 data class UrlScanResult(

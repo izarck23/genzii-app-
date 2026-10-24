@@ -72,7 +72,8 @@ object FirebaseAuthManager {
             ?: user.email?.substringBefore("@")
             ?: "Genzii Member"
           val email = user.email ?: ""
-          GenziiRepository.signIn(email, displayName)
+          val photoUrl = user.photoUrl?.toString()
+          GenziiRepository.signIn(email, displayName, photoUrl)
         }
       }
     } catch (e: Exception) {
@@ -106,7 +107,8 @@ object FirebaseAuthManager {
           .split(" ")
           .filter { it.isNotBlank() }
           .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
-      GenziiRepository.signIn(cleanEmail, displayName)
+      val photoUrl = user.photoUrl?.toString()
+      GenziiRepository.signIn(cleanEmail, displayName, photoUrl)
 
       AuthResult.Success(user)
     } catch (e: Exception) {
@@ -221,68 +223,93 @@ object FirebaseAuthManager {
   suspend fun signInWithGoogle(context: Context): AuthResult {
     val firebaseAuth = auth ?: return AuthResult.Error("Firebase Auth is not available. Please check configuration.")
 
-    return try {
-      val activityContext = findActivity(context) ?: context
-      val credentialManager = CredentialManager.create(activityContext)
+    val activityContext = findActivity(context)
+      ?: (context as? android.app.Activity)
+      ?: return AuthResult.Error("Unable to locate active screen for Google sign-in prompt.")
 
-      // Look up server client ID or use default Google Cloud project number clientId
-      val webClientId = try {
-        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-        if (resId != 0) context.getString(resId) else FIREBASE_WEB_CLIENT_ID
-      } catch (_: Exception) {
-        FIREBASE_WEB_CLIENT_ID
-      }
+    val credentialManager = CredentialManager.create(activityContext)
 
-      val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(webClientId)
-        .build()
+    // Look up server client ID or use default Google Cloud project number clientId
+    val webClientId = try {
+      val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+      if (resId != 0) context.getString(resId) else FIREBASE_WEB_CLIENT_ID
+    } catch (_: Exception) {
+      FIREBASE_WEB_CLIENT_ID
+    }
 
-      val googleIdOption = GetGoogleIdOption.Builder()
-        .setFilterByAuthorizedAccounts(false)
-        .setServerClientId(webClientId)
-        .setAutoSelectEnabled(false)
-        .build()
+    Log.d(TAG, "Initiating Google Sign-In with Web Client ID: $webClientId")
 
-      val request = GetCredentialRequest.Builder()
-        .addCredentialOption(signInWithGoogleOption)
-        .addCredentialOption(googleIdOption)
-        .build()
-
+    // Tier 1: Try GetSignInWithGoogleOption (standard branded explicit button option)
+    val credential = try {
+      val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = webClientId).build()
+      val request = GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
       val result = credentialManager.getCredential(context = activityContext, request = request)
-      val credential = result.credential
+      result.credential
+    } catch (e: GetCredentialCancellationException) {
+      return AuthResult.Cancelled
+    } catch (e: NoCredentialException) {
+      Log.i(TAG, "GetSignInWithGoogleOption returned NoCredentialException. Attempting account picker fallback with GetGoogleIdOption...")
+      // Tier 2 Fallback: Explicit GoogleIdOption with all accounts (filterByAuthorizedAccounts = false)
+      try {
+        val googleIdOption = GetGoogleIdOption.Builder()
+          .setServerClientId(webClientId)
+          .setFilterByAuthorizedAccounts(false)
+          .setAutoSelectEnabled(false)
+          .build()
+        val fallbackRequest = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
+        val fallbackResult = credentialManager.getCredential(context = activityContext, request = fallbackRequest)
+        fallbackResult.credential
+      } catch (fallbackCancel: GetCredentialCancellationException) {
+        return AuthResult.Cancelled
+      } catch (fallbackNoCred: NoCredentialException) {
+        Log.w(TAG, "NoCredentialException in both options: ${fallbackNoCred.message}")
+        val friendly = "No matching Google account credentials found. Please verify that a Google account is active in your phone settings, or sign in with your email and password."
+        _authError.value = friendly
+        return AuthResult.Error(friendly, fallbackNoCred)
+      } catch (fallbackEx: Exception) {
+        Log.e(TAG, "Fallback Google sign-in failed: ${fallbackEx.message}", fallbackEx)
+        val friendly = mapFirebaseException(fallbackEx)
+        _authError.value = friendly
+        return AuthResult.Error(friendly, fallbackEx)
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "Initial Google sign-in request failed: ${e.message}", e)
+      val friendly = mapFirebaseException(e)
+      _authError.value = friendly
+      return AuthResult.Error(friendly, e)
+    }
 
+    // Process returned credential to obtain ID token
+    return try {
       if (credential is CustomCredential &&
         credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
       ) {
         val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-        val authCredential = GoogleAuthProvider.getCredential(googleIdTokenCredential.idToken, null)
+        val idToken = googleIdTokenCredential.idToken
+        if (idToken.isBlank()) {
+          return AuthResult.Error("Google returned an empty ID token.")
+        }
+
+        val authCredential = GoogleAuthProvider.getCredential(idToken, null)
         val authResult = firebaseAuth.signInWithCredential(authCredential).awaitTask()
         val user = authResult.user ?: return AuthResult.Error("Google sign-in completed but no Firebase user returned.")
 
         _currentUser.value = user
         _isUserLoggedIn.value = true
 
-        val name = user.displayName ?: "Google User"
+        val name = user.displayName?.takeIf { it.isNotBlank() }
+          ?: user.email?.substringBefore("@")
+          ?: "Google User"
         val email = user.email ?: ""
-        GenziiRepository.signIn(email, name)
+        val photoUrl = user.photoUrl?.toString()
+        GenziiRepository.signIn(email, name, photoUrl)
 
         AuthResult.Success(user)
       } else {
-        AuthResult.Error("Unsupported credential type returned from Google.")
+        AuthResult.Error("Unsupported credential type returned from Google (${credential.type}).")
       }
-    } catch (e: GetCredentialCancellationException) {
-      AuthResult.Cancelled
-    } catch (e: NoCredentialException) {
-      Log.w(TAG, "No Google accounts available or matching in CredentialManager: ${e.message}")
-      val friendly = "No matching Google account credentials found. Please verify that a Google account is active in your phone settings, or sign in with your email and password."
-      _authError.value = friendly
-      AuthResult.Error(friendly, e)
     } catch (e: Exception) {
-      val msg = e.message ?: ""
-      if (msg.contains("No credential", ignoreCase = true) || msg.contains("16:")) {
-        Log.i(TAG, "Google CredentialManager notification: $msg")
-      } else {
-        Log.e(TAG, "Google Sign-In failed: $msg", e)
-      }
+      Log.e(TAG, "Firebase signInWithCredential failed: ${e.message}", e)
       val friendly = mapFirebaseException(e)
       _authError.value = friendly
       AuthResult.Error(friendly, e)

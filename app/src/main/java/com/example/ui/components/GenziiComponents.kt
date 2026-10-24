@@ -29,8 +29,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.example.data.GenziiRepository
+import com.example.model.DocumentItem
 import com.example.model.FileType
 import com.example.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 fun GenziiLogo(
@@ -114,6 +126,17 @@ fun GenziiTopBar(
   onNotificationsClick: () -> Unit = {},
   onProfileClick: () -> Unit = {}
 ) {
+  val userProfile by GenziiRepository.userProfile.collectAsState()
+  val initials = remember(userProfile.name) {
+    val trimmed = userProfile.name.trim()
+    val words = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
+    when {
+      words.size >= 2 -> "${words[0].first().uppercaseChar()}${words[1].first().uppercaseChar()}"
+      words.isNotEmpty() && words[0].isNotEmpty() -> words[0].take(2).uppercase()
+      else -> "U"
+    }
+  }
+
   Row(
     modifier = Modifier
       .fillMaxWidth()
@@ -192,7 +215,7 @@ fun GenziiTopBar(
         contentAlignment = Alignment.Center
       ) {
         Text(
-          text = "JD",
+          text = initials,
           color = GenziiPurple,
           fontWeight = FontWeight.Bold,
           fontSize = 13.sp,
@@ -577,3 +600,105 @@ fun FileTypeIcon(
     )
   }
 }
+
+private val thumbnailMemoryCache = android.util.LruCache<String, Bitmap>(32)
+
+@Composable
+fun DocumentThumbnailView(
+  doc: DocumentItem,
+  modifier: Modifier = Modifier,
+  size: Dp = 42.dp
+) {
+  val localPath = doc.localFilePath
+  var thumbnailBitmap by remember(localPath) {
+    mutableStateOf(localPath?.let { thumbnailMemoryCache.get(it) })
+  }
+
+  LaunchedEffect(localPath, doc.type) {
+    if (localPath != null && thumbnailBitmap == null) {
+      withContext(Dispatchers.IO) {
+        val file = File(localPath)
+        if (file.exists() && file.length() > 0) {
+          try {
+            val bmp: Bitmap? = when (doc.type) {
+              FileType.IMAGE -> {
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(localPath, options)
+                val maxDim = maxOf(options.outWidth, options.outHeight)
+                val sampleSize = (maxDim / 120).coerceAtLeast(1)
+                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                BitmapFactory.decodeFile(localPath, decodeOptions)
+              }
+              FileType.PDF -> {
+                var pfd: ParcelFileDescriptor? = null
+                var renderer: PdfRenderer? = null
+                var page: PdfRenderer.Page? = null
+                try {
+                  pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                  renderer = PdfRenderer(pfd)
+                  if (renderer.pageCount > 0) {
+                    page = renderer.openPage(0)
+                    val w = 120
+                    val h = ((page.height.toFloat() / page.width.toFloat()) * w).toInt().coerceIn(120, 180)
+                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    val canvas = android.graphics.Canvas(bitmap)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    bitmap
+                  } else null
+                } catch (_: Exception) {
+                  null
+                } finally {
+                  try { page?.close() } catch (_: Exception) {}
+                  try { renderer?.close() } catch (_: Exception) {}
+                  try { pfd?.close() } catch (_: Exception) {}
+                }
+              }
+              else -> null
+            }
+            if (bmp != null) {
+              thumbnailMemoryCache.put(localPath, bmp)
+              withContext(Dispatchers.Main) {
+                thumbnailBitmap = bmp
+              }
+            }
+          } catch (_: Exception) {}
+        }
+      }
+    }
+  }
+
+  val bmp = thumbnailBitmap
+  if (bmp != null) {
+    Box(
+      modifier = modifier
+        .size(size)
+        .clip(RoundedCornerShape(12.dp))
+        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+      contentAlignment = Alignment.Center
+    ) {
+      Image(
+        bitmap = bmp.asImageBitmap(),
+        contentDescription = doc.name,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.fillMaxSize()
+      )
+      if (doc.type == FileType.PDF) {
+        Box(
+          modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(2.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color(0xFFE53935))
+            .padding(horizontal = 2.dp, vertical = 1.dp)
+        ) {
+          Text("PDF", color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+        }
+      }
+    }
+  } else {
+    FileTypeIcon(type = doc.type, modifier = modifier.size(size))
+  }
+}
+

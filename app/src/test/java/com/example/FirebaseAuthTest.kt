@@ -66,4 +66,21 @@ class FirebaseAuthTest {
 
     assertEquals(2, request.credentialOptions.size)
   }
+
+  @Test
+  fun testFallbackOptionsIsolation() {
+    val serverClientId = FirebaseAuthManager.FIREBASE_WEB_CLIENT_ID
+    val signInOption = com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption.Builder(serverClientId).build()
+    val googleIdOption = com.google.android.libraries.identity.googleid.GetGoogleIdOption.Builder()
+      .setServerClientId(serverClientId)
+      .setFilterByAuthorizedAccounts(false)
+      .setAutoSelectEnabled(false)
+      .build()
+
+    val req1 = androidx.credentials.GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+    val req2 = androidx.credentials.GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
+
+    assertEquals(1, req1.credentialOptions.size)
+    assertEquals(1, req2.credentialOptions.size)
+  }
 }
