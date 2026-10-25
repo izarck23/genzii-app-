@@ -487,16 +487,16 @@ fun FolderCard(
   val (folderBg, folderTint, folderIcon) = when {
     name.contains("Research", ignoreCase = true) || name.contains("Academic", ignoreCase = true) ->
       Triple(Color(0xFFE8EAF6), Color(0xFF3949AB), Icons.Default.MenuBook)
-    name.contains("Personal", ignoreCase = true) ->
-      Triple(Color(0xFFE0F2F1), Color(0xFF00897B), Icons.Default.PersonOutline)
-    name.contains("Work", ignoreCase = true) ->
-      Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), Icons.Default.WorkOutline)
     name.contains("Assignment", ignoreCase = true) ->
-      Triple(Color(0xFFE1F5FE), Color(0xFF0288D1), Icons.Default.AssignmentOutlined)
-    name.contains("Project", ignoreCase = true) ->
+      Triple(Color(0xFFE1F5FE), Color(0xFF0288D1), Icons.Outlined.Assignment)
+    name.contains("Lecture", ignoreCase = true) || name.contains("Note", ignoreCase = true) ->
+      Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), Icons.Default.Description)
+    name.contains("Vault", ignoreCase = true) || name.contains("Enclave", ignoreCase = true) ->
+      Triple(GenziiPurpleContainer, GenziiPurple, Icons.Outlined.Lock)
+    name.contains("Personal", ignoreCase = true) || name.contains("Archive", ignoreCase = true) ->
+      Triple(Color(0xFFE0F2F1), Color(0xFF00897B), Icons.Default.PersonOutline)
+    name.contains("Work", ignoreCase = true) || name.contains("Project", ignoreCase = true) ->
       Triple(Color(0xFFEDE7F6), Color(0xFF5E35B1), Icons.Default.FolderSpecial)
-    name.contains("Vault", ignoreCase = true) ->
-      Triple(GenziiPurpleContainer, GenziiPurple, Icons.Default.LockOutlined)
     else ->
       Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, Icons.Default.Folder)
   }
@@ -1017,16 +1017,16 @@ fun VaultFolderViewScreen(
   val (folderBg, folderTint, folderIcon) = when {
     folderName.contains("Research", ignoreCase = true) || folderName.contains("Academic", ignoreCase = true) ->
       Triple(Color(0xFFE8EAF6), Color(0xFF3949AB), Icons.Default.MenuBook)
-    folderName.contains("Personal", ignoreCase = true) ->
-      Triple(Color(0xFFE0F2F1), Color(0xFF00897B), Icons.Default.PersonOutline)
-    folderName.contains("Work", ignoreCase = true) ->
-      Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), Icons.Default.WorkOutline)
     folderName.contains("Assignment", ignoreCase = true) ->
-      Triple(Color(0xFFE1F5FE), Color(0xFF0288D1), Icons.Default.AssignmentOutlined)
-    folderName.contains("Project", ignoreCase = true) ->
+      Triple(Color(0xFFE1F5FE), Color(0xFF0288D1), Icons.Outlined.Assignment)
+    folderName.contains("Lecture", ignoreCase = true) || folderName.contains("Note", ignoreCase = true) ->
+      Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), Icons.Default.Description)
+    folderName.contains("Vault", ignoreCase = true) || folderName.contains("Enclave", ignoreCase = true) ->
+      Triple(GenziiPurpleContainer, GenziiPurple, Icons.Outlined.Lock)
+    folderName.contains("Personal", ignoreCase = true) || folderName.contains("Archive", ignoreCase = true) ->
+      Triple(Color(0xFFE0F2F1), Color(0xFF00897B), Icons.Default.PersonOutline)
+    folderName.contains("Work", ignoreCase = true) || folderName.contains("Project", ignoreCase = true) ->
       Triple(Color(0xFFEDE7F6), Color(0xFF5E35B1), Icons.Default.FolderSpecial)
-    folderName.contains("Vault", ignoreCase = true) ->
-      Triple(GenziiPurpleContainer, GenziiPurple, Icons.Default.LockOutlined)
     else ->
       Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, Icons.Default.Folder)
   }
@@ -1256,21 +1256,43 @@ fun RealDocumentViewer(
       }
     }
   } else {
-    val localFile = remember(doc.localFilePath) {
-      doc.localFilePath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+    val context = LocalContext.current
+    val resolvedLocalFile = remember(doc.localFilePath, doc.uriString, doc.id) {
+      val existing = doc.localFilePath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0 }
+      if (existing != null) return@remember existing
+
+      // Try resolving from doc.uriString if available
+      if (!doc.uriString.isNullOrBlank()) {
+        try {
+          val uri = android.net.Uri.parse(doc.uriString)
+          val restored = com.example.util.FileUtils.copyUriToVaultStorage(context, uri, doc.name)
+          if (restored != null && restored.exists() && restored.length() > 0) return@remember restored
+        } catch (_: Exception) {}
+      }
+
+      // If doc is a PDF with raw byte content
+      if (doc.type == FileType.PDF && doc.content.startsWith("%PDF")) {
+        try {
+          val vaultDir = File(context.filesDir, "vault_documents").apply { mkdirs() }
+          val cacheFile = File(vaultDir, "${doc.id}_cached.pdf")
+          cacheFile.writeBytes(doc.content.toByteArray(Charsets.ISO_8859_1))
+          if (cacheFile.exists() && cacheFile.length() > 0) return@remember cacheFile
+        } catch (_: Exception) {}
+      }
+      null
     }
 
     when {
-      doc.type == FileType.PDF && localFile != null -> {
+      doc.type == FileType.PDF && resolvedLocalFile != null -> {
         RealPdfViewer(
-          file = localFile,
+          file = resolvedLocalFile,
           fallbackText = doc.content,
           modifier = modifier
         )
       }
-      doc.type == FileType.IMAGE && localFile != null -> {
+      doc.type == FileType.IMAGE && resolvedLocalFile != null -> {
         RealImageViewer(
-          file = localFile,
+          file = resolvedLocalFile,
           ocrText = doc.content,
           modifier = modifier
         )

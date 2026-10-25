@@ -248,6 +248,11 @@ fun GenziiNavGraph(
         onSignupSuccess = {
           navController.navigate(Screen.Otp.route)
         },
+        onLoginSuccess = {
+          navController.navigate(Screen.WelcomeBack.route) {
+            popUpTo(Screen.Login.route) { inclusive = true }
+          }
+        },
         onNavigateToLogin = {
           navController.popBackStack()
         },
@@ -455,6 +460,8 @@ fun GenziiNavGraph(
       SettingsScreen(
         onNavigateToAppearance = { navController.navigate(Screen.Appearance.route) },
         onNavigateToPrivacy = { navController.navigate(Screen.PrivacySecurity.route) },
+        onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
+        onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
         onLogout = {
           com.example.auth.FirebaseAuthManager.signOut()
           navController.navigate(Screen.Login.route) {

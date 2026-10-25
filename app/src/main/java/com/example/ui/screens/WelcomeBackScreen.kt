@@ -51,8 +51,11 @@ fun WelcomeBackScreen(
 
         Spacer(modifier = Modifier.height(30.dp))
 
+        val firstName = androidx.compose.runtime.remember(userProfile.name) {
+          userProfile.name.split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Scholar"
+        }
         Text(
-          text = "Hi, ${userProfile.name.split(" ").first()} 👋",
+          text = "Hi, $firstName 👋",
           style = MaterialTheme.typography.displayMedium,
           color = MaterialTheme.colorScheme.onBackground
         )

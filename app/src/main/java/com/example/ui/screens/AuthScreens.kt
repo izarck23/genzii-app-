@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -362,6 +363,7 @@ fun LoginScreen(
 @Composable
 fun CreateAccountScreen(
   onSignupSuccess: (email: String) -> Unit,
+  onLoginSuccess: () -> Unit = {},
   onNavigateToLogin: () -> Unit,
   onBack: () -> Unit
 ) {
@@ -597,15 +599,14 @@ fun CreateAccountScreen(
       ) {
         HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
         Text(
-          text = "  or continue with  ",
+          text = "  or  ",
           color = MaterialTheme.colorScheme.onSurfaceVariant,
-          fontSize = 12.sp,
-          fontFamily = PoppinsFontFamily
+          fontSize = 13.sp
         )
         HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
       }
 
-      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
       // Continue with Google Button
       OutlinedButton(
@@ -617,8 +618,8 @@ fun CreateAccountScreen(
             isLoading = false
             when (res) {
               is AuthResult.Success -> {
-                Toast.makeText(context, "Account created with Google", Toast.LENGTH_SHORT).show()
-                onSignupSuccess(res.user.email ?: "google.user@genzii.app")
+                Toast.makeText(context, "Google sign-in successful", Toast.LENGTH_SHORT).show()
+                onLoginSuccess()
               }
               is AuthResult.Cancelled -> Unit
               is AuthResult.Error -> {
@@ -634,11 +635,9 @@ fun CreateAccountScreen(
           .height(50.dp)
           .testTag("google_signup_button"),
         shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
         colors = ButtonDefaults.outlinedButtonColors(
-          contentColor = MaterialTheme.colorScheme.onBackground
-        ),
-        border = ButtonDefaults.outlinedButtonBorder.copy(
-          brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+          containerColor = MaterialTheme.colorScheme.surface
         )
       ) {
         Image(
@@ -650,8 +649,9 @@ fun CreateAccountScreen(
         Text(
           text = "Continue with Google",
           fontFamily = PoppinsFontFamily,
-          fontWeight = FontWeight.Medium,
-          fontSize = 14.sp
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 15.sp,
+          color = MaterialTheme.colorScheme.onBackground
         )
       }
 
@@ -665,9 +665,7 @@ fun CreateAccountScreen(
           .height(50.dp)
           .testTag("login_nav_button"),
         shape = RoundedCornerShape(16.dp),
-        border = ButtonDefaults.outlinedButtonBorder.copy(
-          brush = androidx.compose.ui.graphics.SolidColor(GenziiPurple)
-        )
+        border = BorderStroke(1.dp, GenziiPurple)
       ) {
         Text(
           text = "Already have an account? Log In",
@@ -949,7 +947,7 @@ fun ResetPasswordScreen(
       Spacer(modifier = Modifier.height(4.dp))
 
       Text(
-        text = "Enter your registered Firebase email address. We'll send you an official reset link.",
+        text = "Enter your registered email address. We'll send you a password reset link.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )

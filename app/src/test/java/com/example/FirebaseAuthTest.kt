@@ -83,4 +83,18 @@ class FirebaseAuthTest {
     assertEquals(1, req1.credentialOptions.size)
     assertEquals(1, req2.credentialOptions.size)
   }
+
+  @Test
+  fun testPrivacyNoProjectLeakageInErrors() {
+    val unconfiguredEx = Exception("CONFIGURATION_NOT_FOUND: Auth provider disabled")
+    val msg = FirebaseAuthManager.mapFirebaseException(unconfiguredEx)
+    assertTrue("Error message should be user-friendly", msg.contains("unavailable", ignoreCase = true))
+    assertTrue("Error message must never expose project ID", !msg.contains("genzii-5413c"))
+    assertTrue("Error message must not expose Firebase internals", !msg.contains("Firebase"))
+
+    val apiKeyEx = Exception("API key not valid for project")
+    val keyMsg = FirebaseAuthManager.mapFirebaseException(apiKeyEx)
+    assertTrue("Key error message must not expose project ID", !keyMsg.contains("genzii-5413c"))
+    assertTrue("Key error message must not expose Firebase internals", !keyMsg.contains("Firebase"))
+  }
 }

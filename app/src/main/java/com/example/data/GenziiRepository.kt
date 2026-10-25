@@ -6,9 +6,25 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import android.content.Context
 import java.util.UUID
 
 object GenziiRepository {
+  private var appContext: Context? = null
+  private const val PREFS_NAME = "genzii_user_prefs"
+  private const val KEY_THEME = "saved_theme_mode"
+
+  fun init(context: Context) {
+    appContext = context.applicationContext
+    try {
+      val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+      val savedTheme = prefs?.getString(KEY_THEME, null)
+      if (savedTheme != null) {
+        val mode = ThemeMode.valueOf(savedTheme)
+        _userProfile.update { it.copy(themeMode = mode) }
+      }
+    } catch (_: Exception) {}
+  }
 
   private val _userProfile = MutableStateFlow(
     UserProfile(
@@ -66,7 +82,7 @@ object GenziiRepository {
   val folders: List<Pair<String, Int>>
     get() {
       val docs = _documents.value
-      val categories = listOf("Research Papers", "Personal", "Work", "Assignments", "Projects")
+      val categories = listOf("Research Papers", "Assignments", "Lecture Notes", "Vault Enclave", "Personal Archive")
       return categories.map { category ->
         category to docs.count { it.folder.equals(category, ignoreCase = true) }
       }
@@ -542,6 +558,31 @@ object GenziiRepository {
 
   fun setThemeMode(mode: ThemeMode) {
     _userProfile.update { it.copy(themeMode = mode) }
+    try {
+      appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ?.edit()
+        ?.putString(KEY_THEME, mode.name)
+        ?.apply()
+    } catch (_: Exception) {}
+  }
+
+  fun deactivateAccount() {
+    _userProfile.update {
+      UserProfile(
+        name = "Guest User",
+        email = "",
+        role = "Student / Researcher"
+      )
+    }
+    _documents.value = emptyList()
+    _reports.value = emptyMap()
+    _chatMessages.value = emptyList()
+    try {
+      appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ?.edit()
+        ?.clear()
+        ?.apply()
+    } catch (_: Exception) {}
   }
 
   fun toggleAppLock(enabled: Boolean) {

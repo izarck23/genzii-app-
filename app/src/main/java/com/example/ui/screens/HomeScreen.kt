@@ -134,9 +134,12 @@ fun HomeScreen(
       // Welcome Greeting
       item {
         Column(modifier = Modifier.padding(top = 4.dp)) {
+          val firstName = remember(userProfile.name) {
+            userProfile.name.split(" ").firstOrNull()?.takeIf { it.isNotBlank() } ?: "Scholar"
+          }
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-              text = "Good morning, ${userProfile.name.split(" ").first()}! 👋",
+              text = "Good morning, $firstName! 👋",
               style = MaterialTheme.typography.displayMedium,
               color = MaterialTheme.colorScheme.onBackground
             )

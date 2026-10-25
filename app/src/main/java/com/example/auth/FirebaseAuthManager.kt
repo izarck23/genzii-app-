@@ -239,31 +239,51 @@ object FirebaseAuthManager {
 
     Log.d(TAG, "Initiating Google Sign-In with Web Client ID: $webClientId")
 
-    // Tier 1: Try GetSignInWithGoogleOption (standard branded explicit button option)
+    // Primary attempt: Request with both SignInWithGoogleOption and GoogleIdOption with all accounts
     val credential = try {
       val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = webClientId).build()
-      val request = GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+      val googleIdOption = GetGoogleIdOption.Builder()
+        .setServerClientId(webClientId)
+        .setFilterByAuthorizedAccounts(false)
+        .setAutoSelectEnabled(false)
+        .build()
+
+      val request = GetCredentialRequest.Builder()
+        .addCredentialOption(signInOption)
+        .addCredentialOption(googleIdOption)
+        .build()
+
       val result = credentialManager.getCredential(context = activityContext, request = request)
       result.credential
     } catch (e: GetCredentialCancellationException) {
+      Log.d(TAG, "Google Sign-In prompt was cancelled by user.")
       return AuthResult.Cancelled
     } catch (e: NoCredentialException) {
-      Log.i(TAG, "GetSignInWithGoogleOption returned NoCredentialException. Attempting account picker fallback with GetGoogleIdOption...")
-      // Tier 2 Fallback: Explicit GoogleIdOption with all accounts (filterByAuthorizedAccounts = false)
+      Log.i(TAG, "Combined request returned NoCredentialException. Attempting dedicated GoogleIdOption fallback...")
+      // Fallback: Isolated GoogleIdOption with explicit account picker
       try {
-        val googleIdOption = GetGoogleIdOption.Builder()
+        val fallbackOption = GetGoogleIdOption.Builder()
           .setServerClientId(webClientId)
           .setFilterByAuthorizedAccounts(false)
           .setAutoSelectEnabled(false)
           .build()
-        val fallbackRequest = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
+        val fallbackRequest = GetCredentialRequest.Builder()
+          .addCredentialOption(fallbackOption)
+          .build()
         val fallbackResult = credentialManager.getCredential(context = activityContext, request = fallbackRequest)
         fallbackResult.credential
       } catch (fallbackCancel: GetCredentialCancellationException) {
         return AuthResult.Cancelled
       } catch (fallbackNoCred: NoCredentialException) {
-        Log.w(TAG, "NoCredentialException in both options: ${fallbackNoCred.message}")
-        val friendly = "No matching Google account credentials found. Please verify that a Google account is active in your phone settings, or sign in with your email and password."
+        Log.w(
+          TAG,
+          "NoCredentialException on device: Google Play Services returned no matching credentials for " +
+            "package '${context.packageName}' with serverClientId '$webClientId'. " +
+            "Ensure the APK signing certificate SHA-1 (45:2D:C3:4E:61:1C:E6:C8:98:AE:7E:BA:75:F5:EA:EE:A1:69:22:67) " +
+            "is added to the Firebase Console / Google Cloud Console under com.genzii.app and Google Sign-In provider is enabled.",
+          fallbackNoCred
+        )
+        val friendly = "Unable to retrieve Google account credentials on this device. Please check that a Google account is active in your device Settings, or sign in with your email and password."
         _authError.value = friendly
         return AuthResult.Error(friendly, fallbackNoCred)
       } catch (fallbackEx: Exception) {
@@ -332,6 +352,21 @@ object FirebaseAuthManager {
     }
   }
 
+  suspend fun deleteAccount(): Result<Unit> {
+    return try {
+      val user = auth?.currentUser
+      if (user != null) {
+        user.delete().awaitTask()
+      }
+      signOut()
+      Result.success(Unit)
+    } catch (e: Exception) {
+      Log.e(TAG, "deleteAccount failed: ${e.message}", e)
+      signOut()
+      Result.failure(e)
+    }
+  }
+
   fun mapFirebaseException(e: Exception): String {
     return when (e) {
       is FirebaseAuthInvalidUserException -> {
@@ -357,13 +392,15 @@ object FirebaseAuthManager {
         when {
           message.contains("CONFIGURATION_NOT_FOUND", ignoreCase = true) ||
             message.contains("OPERATION_NOT_ALLOWED", ignoreCase = true) -> {
-            "Firebase Auth provider is not enabled. Please enable 'Email/Password' in the Firebase Console under Authentication > Sign-in method for project $FIREBASE_PROJECT_ID."
+            Log.w(TAG, "Auth provider disabled or unconfigured: $message")
+            "Authentication service is currently unavailable. Please verify your credentials or try again shortly."
           }
           message.contains("API key not valid", ignoreCase = true) -> {
-            "Firebase API key for project $FIREBASE_PROJECT_ID requires verification. You can also proceed in test mode."
+            Log.w(TAG, "Auth configuration key requires verification: $message")
+            "Authentication service configuration is updating. Please try again shortly."
           }
           message.contains("16:") || message.contains("No credential", ignoreCase = true) -> {
-            "No Google accounts found on this device or Google Play Services was cancelled."
+            "No Google accounts found on this device or Google Play Services prompt was dismissed."
           }
           else -> message
         }

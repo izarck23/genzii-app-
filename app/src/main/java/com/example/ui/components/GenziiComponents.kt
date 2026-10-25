@@ -127,13 +127,15 @@ fun GenziiTopBar(
   onProfileClick: () -> Unit = {}
 ) {
   val userProfile by GenziiRepository.userProfile.collectAsState()
-  val initials = remember(userProfile.name) {
+  val initials = remember(userProfile.name, userProfile.email) {
     val trimmed = userProfile.name.trim()
     val words = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
     when {
       words.size >= 2 -> "${words[0].first().uppercaseChar()}${words[1].first().uppercaseChar()}"
+      words.isNotEmpty() && words[0].isNotEmpty() && words[0] != "Scholar" && words[0] != "Guest" -> words[0].take(2).uppercase()
+      userProfile.email.isNotBlank() -> userProfile.email.take(2).uppercase()
       words.isNotEmpty() && words[0].isNotEmpty() -> words[0].take(2).uppercase()
-      else -> "U"
+      else -> "GZ"
     }
   }
 
@@ -214,13 +216,22 @@ fun GenziiTopBar(
           .testTag("avatar_button"),
         contentAlignment = Alignment.Center
       ) {
-        Text(
-          text = initials,
-          color = GenziiPurple,
-          fontWeight = FontWeight.Bold,
-          fontSize = 13.sp,
-          fontFamily = PoppinsFontFamily
-        )
+        if (!userProfile.photoUrl.isNullOrBlank()) {
+          coil.compose.AsyncImage(
+            model = userProfile.photoUrl,
+            contentDescription = "User profile photo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else {
+          Text(
+            text = initials,
+            color = GenziiPurple,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            fontFamily = PoppinsFontFamily
+          )
+        }
       }
     }
   }
