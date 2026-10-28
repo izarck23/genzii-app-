@@ -11,9 +11,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
@@ -22,11 +25,13 @@ import java.util.UUID
  * adhering to zero-trust per-user security boundaries.
  */
 class UserDocumentRepository(
-  private val db: FirebaseFirestore
+  private val db: FirebaseFirestore,
+  private val context: Context? = null
 ) {
 
   constructor(context: Context) : this(
-    resolveFirestoreInstance(context)
+    resolveFirestoreInstance(context),
+    context.applicationContext
   )
 
   private val auth: FirebaseAuth
@@ -117,13 +122,44 @@ class UserDocumentRepository(
     val listenerRegistration = query.addSnapshotListener { snapshot, error ->
       if (error != null) {
         Log.e(TAG, "Firestore snapshot listener error for user $userId: ${error.message}", error)
-        trySend(emptyList())
+        // Fallback to offline cached metadata
+        context?.let { ctx ->
+          kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+              val cached = DocumentLocalCacheManager.getInstance(ctx).getCachedDocuments()
+              val metaList = cached.map { doc ->
+                UserDocumentMetadata(
+                  id = doc.id,
+                  userId = userId,
+                  name = doc.name,
+                  sizeFormatted = doc.sizeFormatted,
+                  fileType = doc.type.name,
+                  folder = doc.folder,
+                  updatedAt = System.currentTimeMillis(),
+                  originalityScore = doc.originalityScore,
+                  isEncrypted = doc.isEncrypted,
+                  isStarred = doc.isStarred
+                )
+              }
+              trySend(metaList)
+            } catch (_: Exception) {
+              trySend(emptyList())
+            }
+          }
+        } ?: trySend(emptyList())
         return@addSnapshotListener
       }
 
       if (snapshot != null) {
         val documents = snapshot.documents.map { doc ->
           UserDocumentMetadata.fromMap(doc.id, doc.data ?: emptyMap())
+        }
+        context?.let { ctx ->
+          kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+              DocumentLocalCacheManager.getInstance(ctx).cacheFirestoreMetadata(documents)
+            } catch (_: Exception) {}
+          }
         }
         trySend(documents)
       }

@@ -33,6 +33,7 @@ class SettingsScreenTest {
   @Before
   fun setUp() {
     context = ApplicationProvider.getApplicationContext()
+    GenziiRepository.deactivateAccount()
     GenziiRepository.init(context)
   }
 

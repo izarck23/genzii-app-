@@ -103,10 +103,10 @@ val BottomNavItems = listOf(
     testTag = "nav_tab_vault"
   ),
   BottomNavItem(
-    label = "Profile",
+    label = "Settings",
     route = Screen.Profile.route,
-    selectedIcon = Icons.Filled.Person,
-    unselectedIcon = Icons.Outlined.Person,
+    selectedIcon = Icons.Filled.Settings,
+    unselectedIcon = Icons.Outlined.Settings,
     testTag = "nav_tab_profile"
   )
 )
@@ -116,10 +116,14 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
   val navBackStackEntry by navController.currentBackStackEntryAsState()
   val currentDestination = navBackStackEntry?.destination
 
-  // Only show the BottomNavigationBar on the 5 primary tabs
-  val isBottomBarVisible = BottomNavItems.any { item ->
-    currentDestination?.hierarchy?.any { it.route == item.route } == true
-  }
+  // Only show the BottomNavigationBar on the 4 primary tabs (Home, AI, Check, Vault)
+  // The Settings screen has no bottom navigation bar, matching the reference screenshot exactly
+  val isBottomBarVisible = currentDestination?.hierarchy?.any {
+    it.route == Screen.Dashboard.route ||
+    it.route == Screen.AiAssistant.route ||
+    it.route == Screen.OriginalityChecker.route ||
+    it.route == Screen.SecureVault.route
+  } == true
 
   if (!isBottomBarVisible) return
 
@@ -381,17 +385,25 @@ fun GenziiNavGraph(
     }
 
     composable(Screen.Profile.route) {
-      ProfileScreen(
-        onNavigateToSettings = {
-          navController.navigate(Screen.Settings.route)
-        },
+      SettingsScreen(
         onNavigateToPrivacy = {
           navController.navigate(Screen.PrivacySecurity.route)
+        },
+        onNavigateToNotifications = {
+          navController.navigate(Screen.Notifications.route)
         },
         onLogout = {
           com.example.auth.FirebaseAuthManager.signOut()
           navController.navigate(Screen.Login.route) {
             popUpTo(0) { inclusive = true }
+          }
+        },
+        onBack = {
+          if (!navController.popBackStack()) {
+            navController.navigate(Screen.Dashboard.route) {
+              popUpTo(navController.graph.findStartDestination().id)
+              launchSingleTop = true
+            }
           }
         }
       )

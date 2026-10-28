@@ -18,3 +18,5 @@ debug.keystore
 !debug.keystore.base64
 backup_*
 .build-outputs/
+.env
+

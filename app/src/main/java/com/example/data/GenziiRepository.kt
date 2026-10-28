@@ -24,6 +24,47 @@ object GenziiRepository {
         _userProfile.update { it.copy(themeMode = mode) }
       }
     } catch (_: Exception) {}
+
+    // Restore cached documents for offline access
+    loadCachedDocuments()
+  }
+
+  fun loadCachedDocuments() {
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        val cacheManager = DocumentLocalCacheManager.getInstance(ctx)
+        val cached = cacheManager.getCachedDocuments()
+        if (cached.isNotEmpty()) {
+          _documents.update { current ->
+            val existingIds = current.map { it.id }.toSet()
+            val newItems = cached.filterNot { it.id in existingIds }
+            current + newItems
+          }
+          _userProfile.update { it.copy(docsCount = _documents.value.size) }
+        }
+      } catch (e: Exception) {
+        android.util.Log.e("GenziiRepository", "Failed to restore cached documents: ${e.message}")
+      }
+    }
+  }
+
+  private fun persistDocumentChange(doc: DocumentItem) {
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        DocumentLocalCacheManager.getInstance(ctx).cacheDocument(doc)
+      } catch (_: Exception) {}
+    }
+  }
+
+  private fun persistDocumentDeletion(id: String) {
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        DocumentLocalCacheManager.getInstance(ctx).deleteCachedDocument(id)
+      } catch (_: Exception) {}
+    }
   }
 
   private val _userProfile = MutableStateFlow(
@@ -154,24 +195,42 @@ object GenziiRepository {
     )
     _documents.update { listOf(newDoc) + it }
     _userProfile.update { it.copy(docsCount = it.docsCount + 1) }
+    persistDocumentChange(newDoc)
     return newDoc
   }
 
   fun deleteDocument(id: String) {
     _documents.update { list -> list.filterNot { it.id == id } }
     _userProfile.update { it.copy(docsCount = (it.docsCount - 1).coerceAtLeast(0)) }
+    persistDocumentDeletion(id)
   }
 
   fun toggleStar(id: String) {
+    var updated: DocumentItem? = null
     _documents.update { list ->
-      list.map { if (it.id == id) it.copy(isStarred = !it.isStarred) else it }
+      list.map {
+        if (it.id == id) {
+          val starred = it.copy(isStarred = !it.isStarred)
+          updated = starred
+          starred
+        } else it
+      }
     }
+    updated?.let { persistDocumentChange(it) }
   }
 
   fun updateDocumentContent(id: String, newContent: String) {
+    var updated: DocumentItem? = null
     _documents.update { list ->
-      list.map { if (it.id == id) it.copy(content = newContent, updatedAt = "Just now") else it }
+      list.map {
+        if (it.id == id) {
+          val item = it.copy(content = newContent, updatedAt = "Just now")
+          updated = item
+          item
+        } else it
+      }
     }
+    updated?.let { persistDocumentChange(it) }
   }
 
   suspend fun scanOriginality(
@@ -284,6 +343,7 @@ object GenziiRepository {
         usedStorageGb = String.format("%.2f", it.usedStorageGb + addedGb).toDoubleOrNull() ?: it.usedStorageGb
       )
     }
+    persistDocumentChange(doc)
     return doc
   }
 
@@ -583,6 +643,14 @@ object GenziiRepository {
         ?.clear()
         ?.apply()
     } catch (_: Exception) {}
+    val ctx = appContext
+    if (ctx != null) {
+      kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        try {
+          DocumentLocalCacheManager.getInstance(ctx).clearAllCache()
+        } catch (_: Exception) {}
+      }
+    }
   }
 
   fun toggleAppLock(enabled: Boolean) {
