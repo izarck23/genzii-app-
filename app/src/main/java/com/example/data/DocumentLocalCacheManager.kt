@@ -266,7 +266,8 @@ data class CachedDocumentDto(
   val isDeviceFile: Boolean = false,
   val localFilePath: String? = null,
   val uriString: String? = null,
-  val pageCount: Int = 1
+  val pageCount: Int = 1,
+  val createdAt: Long = System.currentTimeMillis()
 ) {
   fun toDocumentItem(restoredContent: String = content): DocumentItem {
     val fileType = try {
@@ -289,7 +290,8 @@ data class CachedDocumentDto(
       isDeviceFile = isDeviceFile,
       localFilePath = localFilePath,
       uriString = uriString,
-      pageCount = pageCount
+      pageCount = pageCount,
+      createdAt = createdAt
     )
   }
 
@@ -310,7 +312,8 @@ data class CachedDocumentDto(
         isDeviceFile = doc.isDeviceFile,
         localFilePath = doc.localFilePath,
         uriString = doc.uriString,
-        pageCount = doc.pageCount
+        pageCount = doc.pageCount,
+        createdAt = doc.createdAt
       )
     }
   }

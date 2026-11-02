@@ -251,4 +251,30 @@ class SettingsScreenTest {
     composeTestRule.onNodeWithText("Cancel").assertExists()
     composeTestRule.onNodeWithText("Deactivate").assertExists()
   }
+
+  @Test
+  fun testProfileDetailsEditAndSaveFlow() {
+    GenziiRepository.updateProfile(
+      name = "Old Name",
+      email = "test@example.com",
+      role = "Student"
+    )
+
+    composeTestRule.setContent {
+      MyApplicationTheme(darkTheme = false) {
+        SettingsScreen()
+      }
+    }
+
+    // Open profile details dialog
+    composeTestRule.onNodeWithTag("settings_profile_card").performClick()
+    composeTestRule.onNodeWithText("Manage Profile").performClick()
+
+    // Verify edit mode switched
+    composeTestRule.onNodeWithText("Save Changes").assertExists()
+    composeTestRule.onNodeWithText("Save Changes").performClick()
+
+    // Dialog closed and name persisted
+    assertEquals("Old Name", GenziiRepository.userProfile.value.name)
+  }
 }

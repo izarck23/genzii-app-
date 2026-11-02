@@ -19,4 +19,6 @@ debug.keystore
 backup_*
 .build-outputs/
 .env
-
+.env.*
+*.env
+/.env

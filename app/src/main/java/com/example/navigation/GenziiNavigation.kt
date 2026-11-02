@@ -1,5 +1,6 @@
 package com.example.navigation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -127,64 +128,77 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
 
   if (!isBottomBarVisible) return
 
-  Surface(
+  Box(
     modifier = Modifier
       .fillMaxWidth()
-      .navigationBarsPadding(),
-    color = MaterialTheme.colorScheme.surface,
-    tonalElevation = 8.dp,
-    shadowElevation = 16.dp
+      .navigationBarsPadding()
+      .padding(horizontal = 20.dp, vertical = 10.dp),
+    contentAlignment = Alignment.Center
   ) {
-    Row(
+    Surface(
+      shape = RoundedCornerShape(32.dp),
+      color = MaterialTheme.colorScheme.surface,
+      tonalElevation = 6.dp,
+      shadowElevation = 12.dp,
+      border = BorderStroke(
+        width = 1.dp,
+        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+      ),
       modifier = Modifier
         .fillMaxWidth()
-        .padding(vertical = 8.dp, horizontal = 12.dp),
-      horizontalArrangement = Arrangement.SpaceAround,
-      verticalAlignment = Alignment.CenterVertically
+        .widthIn(max = 480.dp)
     ) {
-      BottomNavItems.forEach { item ->
-        val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        BottomNavItems.forEach { item ->
+          val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
 
-        Column(
-          horizontalAlignment = Alignment.CenterHorizontally,
-          modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable {
-              navController.navigate(item.route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                  saveState = true
-                }
-                launchSingleTop = true
-                restoreState = true
-              }
-            }
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-            .testTag(item.testTag)
-        ) {
-          Box(
+          Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = if (isSelected) GenziiPurpleContainer else Color.Transparent,
             modifier = Modifier
-              .size(32.dp)
-              .clip(CircleShape)
-              .background(if (isSelected) GenziiPurpleContainer else Color.Transparent),
-            contentAlignment = Alignment.Center
+              .clip(RoundedCornerShape(20.dp))
+              .clickable {
+                navController.navigate(item.route) {
+                  popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                  }
+                  launchSingleTop = true
+                  restoreState = true
+                }
+              }
+              .testTag(item.testTag)
           ) {
-            Icon(
-              imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-              contentDescription = item.label,
-              tint = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-              modifier = Modifier.size(22.dp)
-            )
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.Center,
+              modifier = Modifier
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .defaultMinSize(minWidth = 56.dp, minHeight = 44.dp)
+            ) {
+              Icon(
+                imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                contentDescription = item.label,
+                tint = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+              )
+
+              Spacer(modifier = Modifier.height(2.dp))
+
+              Text(
+                text = item.label,
+                fontFamily = PoppinsFontFamily,
+                fontSize = 10.sp,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+              )
+            }
           }
-
-          Spacer(modifier = Modifier.height(2.dp))
-
-          Text(
-            text = item.label,
-            fontFamily = PoppinsFontFamily,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-          )
         }
       }
     }

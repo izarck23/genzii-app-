@@ -54,14 +54,11 @@ fun OriginalityCheckerScreen(
   val context = LocalContext.current
   val reports by GenziiRepository.reports.collectAsState()
   var selectedTab by remember { mutableStateOf(0) } // 0: Text, 1: Document
-  var documentTitle by remember { mutableStateOf("Research_Paper.pdf") }
-  var textInput by remember {
-    mutableStateOf(
-      "Modern transformer backbones rely heavily on multi-head scaled dot-product attention mechanisms. As model capacity scales into billions of parameters, memory throughput and quadratic complexity become principal bottlenecks during inference and pre-training phases. We introduce a hybrid sparse attention operator coupled with dynamic low-rank projections."
-    )
-  }
+  var documentTitle by remember { mutableStateOf("") }
+  var textInput by remember { mutableStateOf("") }
   var isScanning by remember { mutableStateOf(false) }
-  var scanProgress by remember { mutableStateOf(0f) }
+  var elapsedScanSeconds by remember { mutableIntStateOf(0) }
+  var scanProgress by remember { mutableFloatStateOf(0f) }
   var activeReport by remember {
     mutableStateOf<OriginalityReport?>(
       if (initialReportId != null) reports[initialReportId] else null
@@ -73,6 +70,17 @@ fun OriginalityCheckerScreen(
   val isGeminiLive = remember { GeminiService.isApiKeyConfigured() }
 
   val coroutineScope = rememberCoroutineScope()
+
+  LaunchedEffect(isScanning) {
+    if (isScanning) {
+      elapsedScanSeconds = 0
+      while (isScanning) {
+        kotlinx.coroutines.delay(1000)
+        elapsedScanSeconds++
+      }
+    }
+  }
+
   val wordCount = remember(textInput) {
     textInput.split(Regex("\\s+")).filter { it.isNotBlank() }.size
   }
@@ -357,48 +365,113 @@ fun OriginalityCheckerScreen(
 
         // Scanning indicator or Scan Button
         if (isScanning) {
-          Column(
+          Card(
             modifier = Modifier
               .fillMaxWidth()
-              .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+              .padding(vertical = 12.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
           ) {
-            LinearProgressIndicator(
-              progress = { scanProgress },
+            Column(
               modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-              color = GenziiPurple
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-              text = "Checking against 14B scholarly web pages & papers...",
-              fontFamily = PoppinsFontFamily,
-              fontSize = 13.sp,
-              color = GenziiPurple,
-              fontWeight = FontWeight.Medium
-            )
+                .padding(20.dp),
+              horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.5.dp,
+                    color = GenziiPurple
+                  )
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Text(
+                    text = "Analyzing Document",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                  )
+                }
+
+                // Loading Timer Badge
+                Surface(
+                  shape = RoundedCornerShape(12.dp),
+                  color = GenziiPurpleContainer
+                ) {
+                  Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Icon(
+                      imageVector = Icons.Outlined.Timer,
+                      contentDescription = null,
+                      tint = GenziiPurple,
+                      modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = String.format("%02d:%02d", elapsedScanSeconds / 60, elapsedScanSeconds % 60),
+                      fontFamily = PoppinsFontFamily,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 12.sp,
+                      color = GenziiPurple
+                    )
+                  }
+                }
+              }
+
+              Spacer(modifier = Modifier.height(16.dp))
+
+              LinearProgressIndicator(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(8.dp)
+                  .clip(RoundedCornerShape(4.dp)),
+                color = GenziiPurple,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+              )
+
+              Spacer(modifier = Modifier.height(14.dp))
+
+              val statusText = when {
+                elapsedScanSeconds < 3 -> "Tokenizing document contents & extracting syntactic structure..."
+                elapsedScanSeconds < 7 -> "Connecting to Gemini 2.5 Flash academic verification neural engine..."
+                elapsedScanSeconds < 12 -> "Cross-checking citations, semantics, and literature fingerprints..."
+                else -> "Finalizing originality score and synthesizing evidence report..."
+              }
+
+              Text(
+                text = statusText,
+                fontFamily = PoppinsFontFamily,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+              )
+            }
           }
         } else {
           Button(
             onClick = {
-              isScanning = true
-              scanProgress = 0f
-              coroutineScope.launch {
-                for (p in 1..10) {
-                  delay(150)
-                  scanProgress = p / 10f
+              if (textInput.isNotBlank()) {
+                isScanning = true
+                coroutineScope.launch {
+                  val result = GenziiRepository.scanOriginality(
+                    title = documentTitle.ifBlank { "Scanned_Text.txt" },
+                    text = textInput
+                  )
+                  isScanning = false
+                  activeReport = result
+                  showInterstitialAdDialog = true
                 }
-                val result = GenziiRepository.scanOriginality(
-                  title = documentTitle,
-                  text = textInput
-                )
-                isScanning = false
-                activeReport = result
-                showInterstitialAdDialog = true
               }
             },
+            enabled = textInput.isNotBlank(),
             modifier = Modifier
               .fillMaxWidth()
               .height(54.dp)
@@ -412,7 +485,7 @@ fun OriginalityCheckerScreen(
             Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Scan",
+              text = if (textInput.isBlank()) "Enter Text to Scan" else "Scan",
               fontFamily = PoppinsFontFamily,
               fontWeight = FontWeight.Bold,
               fontSize = 16.sp

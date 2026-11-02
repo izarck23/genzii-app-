@@ -19,8 +19,22 @@ data class DocumentItem(
   val isDeviceFile: Boolean = false,
   val localFilePath: String? = null,
   val uriString: String? = null,
-  val pageCount: Int = 1
+  val pageCount: Int = 1,
+  val createdAt: Long = System.currentTimeMillis()
 )
+
+enum class DocumentSortOrder(val id: String, val displayName: String, val shortLabel: String) {
+  DATE_NEWEST("date_desc", "Date Created (Newest First)", "Date (Newest)"),
+  DATE_OLDEST("date_asc", "Date Created (Oldest First)", "Date (Oldest)"),
+  NAME_AZ("name_asc", "Alphabetical (A–Z)", "Name (A–Z)"),
+  NAME_ZA("name_desc", "Alphabetical (Z–A)", "Name (Z–A)");
+
+  companion object {
+    fun fromId(id: String?): DocumentSortOrder {
+      return entries.find { it.id == id } ?: DATE_NEWEST
+    }
+  }
+}
 
 data class SourceMatch(
   val domain: String,

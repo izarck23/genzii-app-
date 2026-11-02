@@ -439,12 +439,21 @@ fun SettingsScreen(
   }
 
   // --- DIALOG: Profile Details ---
+  // --- DIALOG: Profile Details ---
   if (showProfileDetailsDialog) {
+    var isEditingProfile by remember { mutableStateOf(false) }
+    var editName by remember(displayName) { mutableStateOf(displayName) }
+    var editRole by remember(displayRole) { mutableStateOf(displayRole.removePrefix("@")) }
+    var editInstitution by remember(userProfile.institution) { mutableStateOf(userProfile.institution) }
+
     AlertDialog(
-      onDismissRequest = { showProfileDetailsDialog = false },
+      onDismissRequest = {
+        showProfileDetailsDialog = false
+        isEditingProfile = false
+      },
       title = {
         Text(
-          text = "Profile Details",
+          text = if (isEditingProfile) "Edit Profile" else "Profile Details",
           fontWeight = FontWeight.Bold,
           fontSize = 18.sp,
           color = if (isDark) Color.White else Color(0xFF111111)
@@ -455,82 +464,117 @@ fun SettingsScreen(
           modifier = Modifier.fillMaxWidth(),
           verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            Box(
-              modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(
-                  Brush.linearGradient(
-                    listOf(Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF42A5F5))
-                  )
-                ),
-              contentAlignment = Alignment.Center
+          if (!isEditingProfile) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.fillMaxWidth()
             ) {
-              if (!photoUrl.isNullOrBlank()) {
-                coil.compose.AsyncImage(
-                  model = photoUrl,
-                  contentDescription = "Profile Photo",
-                  contentScale = ContentScale.Crop,
-                  modifier = Modifier.fillMaxSize()
-                )
-              } else {
+              Box(
+                modifier = Modifier
+                  .size(44.dp)
+                  .clip(CircleShape)
+                  .background(
+                    Brush.linearGradient(
+                      listOf(Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF42A5F5))
+                    )
+                  ),
+                contentAlignment = Alignment.Center
+              ) {
+                if (!photoUrl.isNullOrBlank()) {
+                  coil.compose.AsyncImage(
+                    model = photoUrl,
+                    contentDescription = "Profile Photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                  )
+                } else {
+                  Text(
+                    text = displayName.take(2).uppercase(),
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
+              }
+              Spacer(modifier = Modifier.width(12.dp))
+              Column {
                 Text(
-                  text = displayName.take(2).uppercase(),
-                  color = Color.White,
+                  text = displayName,
+                  fontWeight = FontWeight.SemiBold,
                   fontSize = 15.sp,
-                  fontWeight = FontWeight.Bold
+                  color = if (isDark) Color.White else Color(0xFF111111)
+                )
+                Text(
+                  text = displayRole,
+                  fontSize = 12.5.sp,
+                  color = secondaryTextColor
                 )
               }
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-              Text(
-                text = displayName,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 15.sp,
-                color = if (isDark) Color.White else Color(0xFF111111)
-              )
-              Text(
-                text = displayRole,
-                fontSize = 12.5.sp,
-                color = secondaryTextColor
-              )
-            }
+
+            HorizontalDivider(thickness = 0.8.dp, color = dividerColor)
+
+            Text(
+              text = "Email: ${userProfile.email.ifBlank { authUser?.email ?: "Not provided" }}",
+              fontSize = 13.5.sp,
+              color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
+            )
+            Text(
+              text = "Institution: ${userProfile.institution}",
+              fontSize = 13.5.sp,
+              color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
+            )
+            Text(
+              text = "Membership: Tier ${userProfile.tier.name}",
+              fontSize = 13.5.sp,
+              color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
+            )
+            Text(
+              text = "Member Since: ${userProfile.memberSince}",
+              fontSize = 13.5.sp,
+              color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
+            )
+          } else {
+            OutlinedTextField(
+              value = editName,
+              onValueChange = { editName = it },
+              label = { Text("Display Name") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+              value = editRole,
+              onValueChange = { editRole = it },
+              label = { Text("Role / Headline (e.g. UI/UX Designer)") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+              value = editInstitution,
+              onValueChange = { editInstitution = it },
+              label = { Text("Institution") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
           }
-
-          HorizontalDivider(thickness = 0.8.dp, color = dividerColor)
-
-          Text(
-            text = "Email: ${userProfile.email.ifBlank { "Not provided" }}",
-            fontSize = 13.5.sp,
-            color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
-          )
-          Text(
-            text = "Institution: ${userProfile.institution}",
-            fontSize = 13.5.sp,
-            color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
-          )
-          Text(
-            text = "Membership: Tier ${userProfile.tier.name}",
-            fontSize = 13.5.sp,
-            color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
-          )
-          Text(
-            text = "Member Since: ${userProfile.memberSince}",
-            fontSize = 13.5.sp,
-            color = if (isDark) Color(0xFFD1D1D6) else Color(0xFF333333)
-          )
         }
       },
       confirmButton = {
         Button(
           onClick = {
-            showProfileDetailsDialog = false
-            onNavigateToProfile()
+            if (isEditingProfile) {
+              GenziiRepository.updateProfile(
+                name = editName,
+                email = userProfile.email,
+                role = editRole,
+                institution = editInstitution
+              )
+              Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
+              isEditingProfile = false
+              showProfileDetailsDialog = false
+            } else {
+              isEditingProfile = true
+            }
           },
           colors = ButtonDefaults.buttonColors(
             containerColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFF111111),
@@ -538,12 +582,18 @@ fun SettingsScreen(
           ),
           shape = RoundedCornerShape(12.dp)
         ) {
-          Text("Manage Profile", fontSize = 13.5.sp)
+          Text(if (isEditingProfile) "Save Changes" else "Manage Profile", fontSize = 13.5.sp)
         }
       },
       dismissButton = {
-        TextButton(onClick = { showProfileDetailsDialog = false }) {
-          Text("Close", color = if (isDark) Color(0xFFA0A0A5) else Color(0xFF666666))
+        TextButton(onClick = {
+          if (isEditingProfile) {
+            isEditingProfile = false
+          } else {
+            showProfileDetailsDialog = false
+          }
+        }) {
+          Text(if (isEditingProfile) "Cancel" else "Close", color = if (isDark) Color(0xFFA0A0A5) else Color(0xFF666666))
         }
       },
       containerColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
@@ -555,6 +605,9 @@ fun SettingsScreen(
   if (showPasswordDialog) {
     var resetEmailSent by remember { mutableStateOf(false) }
     var isSending by remember { mutableStateOf(false) }
+    var inputEmail by remember(userProfile.email) {
+      mutableStateOf(userProfile.email.ifBlank { authUser?.email ?: "" })
+    }
 
     AlertDialog(
       onDismissRequest = { showPasswordDialog = false },
@@ -569,7 +622,7 @@ fun SettingsScreen(
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
           Text(
-            text = "Account: ${userProfile.email.ifBlank { "Registered email" }}",
+            text = "Account: ${inputEmail.ifBlank { "Registered email" }}",
             fontWeight = FontWeight.Medium,
             fontSize = 14.sp,
             color = if (isDark) Color.White else Color(0xFF111111)
@@ -580,6 +633,15 @@ fun SettingsScreen(
             color = secondaryTextColor,
             lineHeight = 18.sp
           )
+          if (inputEmail.isBlank()) {
+            OutlinedTextField(
+              value = inputEmail,
+              onValueChange = { inputEmail = it },
+              label = { Text("Email address") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+          }
           if (resetEmailSent) {
             Box(
               modifier = Modifier
@@ -601,13 +663,13 @@ fun SettingsScreen(
       confirmButton = {
         Button(
           onClick = {
-            val targetEmail = userProfile.email.trim()
+            val targetEmail = inputEmail.trim()
             if (targetEmail.isNotBlank()) {
               isSending = true
               try {
                 com.google.firebase.auth.FirebaseAuth.getInstance()
                   .sendPasswordResetEmail(targetEmail)
-                  .addOnCompleteListener { task ->
+                  .addOnCompleteListener { _ ->
                     isSending = false
                     resetEmailSent = true
                     Toast.makeText(context, "Reset link sent to $targetEmail", Toast.LENGTH_SHORT).show()
@@ -618,7 +680,7 @@ fun SettingsScreen(
                 Toast.makeText(context, "Reset instructions dispatched to $targetEmail", Toast.LENGTH_SHORT).show()
               }
             } else {
-              Toast.makeText(context, "No email address linked to profile", Toast.LENGTH_SHORT).show()
+              Toast.makeText(context, "Please enter an email address", Toast.LENGTH_SHORT).show()
             }
           },
           enabled = !isSending,
@@ -1047,7 +1109,7 @@ fun DarkModeToggleScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         IconButton(onClick = onBack) {
-          Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+          Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
@@ -1168,7 +1230,7 @@ fun PrivacySecurityScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         IconButton(onClick = onBack) {
-          Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+          Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(

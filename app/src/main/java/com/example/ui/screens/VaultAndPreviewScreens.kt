@@ -12,12 +12,17 @@ import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,7 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.GenziiRepository
 import com.example.model.DocumentItem
+import com.example.model.DocumentSortOrder
 import com.example.model.FileType
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,6 +62,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private fun isImageExtension(name: String): Boolean {
+  val lower = name.lowercase()
+  return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") ||
+      lower.endsWith(".webp") || lower.endsWith(".bmp") || lower.endsWith(".gif")
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VaultScreen(
   onOpenDocument: (String) -> Unit,
@@ -70,7 +85,22 @@ fun VaultScreen(
   val coroutineScope = rememberCoroutineScope()
   var searchQuery by remember { mutableStateOf("") }
   var selectedFilter by remember { mutableStateOf("All Files") }
+  var sortOrder by remember {
+    mutableStateOf(DocumentSortOrder.fromId(GenziiRepository.getSavedSortOrder()))
+  }
+  var showSortMenu by remember { mutableStateOf(false) }
   var showAddFileDialog by remember { mutableStateOf(false) }
+
+  // Multi-selection state
+  var isSelectionMode by remember { mutableStateOf(false) }
+  var selectedDocIds by remember { mutableStateOf(setOf<String>()) }
+  var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+
+  // Cancel multi-selection on system back press
+  BackHandler(enabled = isSelectionMode) {
+    isSelectionMode = false
+    selectedDocIds = emptySet()
+  }
 
   val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
     contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
@@ -95,8 +125,8 @@ fun VaultScreen(
 
   val filters = listOf("All Files", "Documents", "Images", "Notes")
 
-  val filteredDocuments = remember(documents, searchQuery, selectedFilter) {
-    documents.filter { doc ->
+  val filteredDocuments = remember(documents, searchQuery, selectedFilter, sortOrder) {
+    val filtered = documents.filter { doc ->
       val matchesQuery = searchQuery.isBlank() || doc.name.contains(searchQuery, ignoreCase = true) || doc.folder.contains(searchQuery, ignoreCase = true)
       val matchesFilter = when (selectedFilter) {
         "Documents" -> doc.type == FileType.PDF || doc.type == FileType.DOCX || doc.type == FileType.PPTX
@@ -106,16 +136,97 @@ fun VaultScreen(
       }
       matchesQuery && matchesFilter
     }
+    when (sortOrder) {
+      DocumentSortOrder.DATE_NEWEST -> filtered.sortedByDescending { it.createdAt }
+      DocumentSortOrder.DATE_OLDEST -> filtered.sortedBy { it.createdAt }
+      DocumentSortOrder.NAME_AZ -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+      DocumentSortOrder.NAME_ZA -> filtered.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
   }
 
   Scaffold(
     topBar = {
-      GenziiTopBar(
-        title = "Secure Vault",
-        unreadCount = unreadNotifs,
-        onNotificationsClick = onNotificationsClick,
-        onProfileClick = onProfileClick
-      )
+      if (isSelectionMode) {
+        Surface(
+          color = MaterialTheme.colorScheme.surface,
+          tonalElevation = 3.dp,
+          modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              IconButton(
+                onClick = {
+                  isSelectionMode = false
+                  selectedDocIds = emptySet()
+                },
+                modifier = Modifier.testTag("exit_selection_button")
+              ) {
+                Icon(Icons.Default.Close, contentDescription = "Exit selection")
+              }
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "${selectedDocIds.size} selected",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+              )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              TextButton(
+                onClick = {
+                  if (selectedDocIds.size == filteredDocuments.size) {
+                    selectedDocIds = emptySet()
+                  } else {
+                    selectedDocIds = filteredDocuments.map { it.id }.toSet()
+                  }
+                },
+                modifier = Modifier.testTag("toggle_select_all_button")
+              ) {
+                Text(
+                  text = if (selectedDocIds.size == filteredDocuments.size && filteredDocuments.isNotEmpty()) "Deselect All" else "Select All",
+                  color = GenziiPurple,
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.SemiBold
+                )
+              }
+
+              IconButton(
+                onClick = {
+                  selectedDocIds.forEach { id ->
+                    GenziiRepository.toggleStar(id)
+                  }
+                  Toast.makeText(context, "Starred selected items", Toast.LENGTH_SHORT).show()
+                },
+                enabled = selectedDocIds.isNotEmpty()
+              ) {
+                Icon(Icons.Default.Star, contentDescription = "Star selected", tint = Color(0xFFFFB300))
+              }
+
+              IconButton(
+                onClick = { showBatchDeleteConfirm = true },
+                enabled = selectedDocIds.isNotEmpty()
+              ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete selected", tint = GenziiError)
+              }
+            }
+          }
+        }
+      } else {
+        GenziiTopBar(
+          title = "Secure Vault",
+          unreadCount = unreadNotifs,
+          onNotificationsClick = onNotificationsClick,
+          onProfileClick = onProfileClick
+        )
+      }
     },
     floatingActionButton = {
       FloatingActionButton(
@@ -307,24 +418,106 @@ fun VaultScreen(
         }
       }
 
-      // Recent Files Header
+      // Recent Files Header with Sorting Menu
       item {
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = "Recent Files",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-          )
-          Text(
-            text = "${filteredDocuments.size} files",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = "Recent Files",
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+              text = "(${filteredDocuments.size})",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+
+          // Sorting Dropdown Button
+          Box {
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { showSortMenu = true }
+                .testTag("sort_button")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.AutoMirrored.Filled.Sort,
+                  contentDescription = "Sort Documents",
+                  tint = GenziiPurple,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = sortOrder.shortLabel,
+                  fontFamily = PoppinsFontFamily,
+                  fontSize = 11.5.sp,
+                  fontWeight = FontWeight.Medium,
+                  color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Icon(
+                  imageVector = Icons.Default.ArrowDropDown,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                  modifier = Modifier.size(16.dp)
+                )
+              }
+            }
+
+            DropdownMenu(
+              expanded = showSortMenu,
+              onDismissRequest = { showSortMenu = false },
+              modifier = Modifier.testTag("sort_menu")
+            ) {
+              DocumentSortOrder.entries.forEach { order ->
+                DropdownMenuItem(
+                  text = {
+                    Text(
+                      text = order.displayName,
+                      fontWeight = if (sortOrder == order) FontWeight.Bold else FontWeight.Normal,
+                      color = if (sortOrder == order) GenziiPurple else MaterialTheme.colorScheme.onSurface
+                    )
+                  },
+                  onClick = {
+                    sortOrder = order
+                    GenziiRepository.saveSortOrder(order.id)
+                    showSortMenu = false
+                  },
+                  leadingIcon = {
+                    val icon = when (order) {
+                      DocumentSortOrder.DATE_NEWEST, DocumentSortOrder.DATE_OLDEST -> Icons.Outlined.Schedule
+                      DocumentSortOrder.NAME_AZ, DocumentSortOrder.NAME_ZA -> Icons.Outlined.SortByAlpha
+                    }
+                    Icon(
+                      imageVector = icon,
+                      contentDescription = null,
+                      tint = if (sortOrder == order) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                  },
+                  trailingIcon = {
+                    if (sortOrder == order) {
+                      Icon(Icons.Default.Check, contentDescription = "Active", tint = GenziiPurple)
+                    }
+                  },
+                  modifier = Modifier.testTag("sort_item_${order.id}")
+                )
+              }
+            }
+          }
         }
       }
 
@@ -356,9 +549,24 @@ fun VaultScreen(
           }
         }
       } else {
-        items(filteredDocuments) { doc ->
+        items(filteredDocuments, key = { it.id }) { doc ->
           VaultFileRow(
             doc = doc,
+            isSelectionMode = isSelectionMode,
+            isSelected = doc.id in selectedDocIds,
+            onToggleSelect = {
+              selectedDocIds = if (doc.id in selectedDocIds) {
+                selectedDocIds - doc.id
+              } else {
+                selectedDocIds + doc.id
+              }
+            },
+            onLongClick = {
+              if (!isSelectionMode) {
+                isSelectionMode = true
+                selectedDocIds = setOf(doc.id)
+              }
+            },
             onClick = { onOpenDocument(doc.id) },
             onStarClick = { GenziiRepository.toggleStar(doc.id) },
             onDeleteClick = { GenziiRepository.deleteDocument(doc.id) }
@@ -475,6 +683,41 @@ fun VaultScreen(
         }
       )
     }
+
+    // Batch Delete Confirmation Dialog
+    if (showBatchDeleteConfirm) {
+      AlertDialog(
+        onDismissRequest = { showBatchDeleteConfirm = false },
+        title = {
+          Text("Delete ${selectedDocIds.size} items?", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold)
+        },
+        text = {
+          Text("Are you sure you want to delete these documents from your encrypted vault? This action cannot be undone.")
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              selectedDocIds.forEach { id ->
+                GenziiRepository.deleteDocument(id)
+              }
+              val count = selectedDocIds.size
+              selectedDocIds = emptySet()
+              isSelectionMode = false
+              showBatchDeleteConfirm = false
+              Toast.makeText(context, "Deleted $count items", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiError)
+          ) {
+            Text("Delete")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showBatchDeleteConfirm = false }) {
+            Text("Cancel")
+          }
+        }
+      )
+    }
   }
 }
 
@@ -545,9 +788,14 @@ fun FolderCard(
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VaultFileRow(
   doc: DocumentItem,
+  isSelectionMode: Boolean = false,
+  isSelected: Boolean = false,
+  onToggleSelect: () -> Unit = {},
+  onLongClick: () -> Unit = {},
   onClick: () -> Unit,
   onStarClick: () -> Unit,
   onDeleteClick: () -> Unit
@@ -558,10 +806,25 @@ fun VaultFileRow(
     modifier = Modifier
       .fillMaxWidth()
       .clip(RoundedCornerShape(16.dp))
-      .clickable(onClick = onClick),
+      .combinedClickable(
+        onClick = {
+          if (isSelectionMode) {
+            onToggleSelect()
+          } else {
+            onClick()
+          }
+        },
+        onLongClick = {
+          onLongClick()
+        }
+      )
+      .testTag("doc_row_${doc.id}"),
     shape = RoundedCornerShape(16.dp),
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    colors = CardDefaults.cardColors(
+      containerColor = if (isSelected) GenziiPurpleContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surface
+    ),
+    border = if (isSelected) BorderStroke(2.dp, GenziiPurple) else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+    elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.5.dp)
   ) {
     Row(
       modifier = Modifier
@@ -569,6 +832,20 @@ fun VaultFileRow(
         .padding(12.dp),
       verticalAlignment = Alignment.CenterVertically
     ) {
+      if (isSelectionMode) {
+        Checkbox(
+          checked = isSelected,
+          onCheckedChange = { onToggleSelect() },
+          colors = CheckboxDefaults.colors(
+            checkedColor = GenziiPurple,
+            checkmarkColor = GenziiWhite
+          ),
+          modifier = Modifier
+            .padding(end = 8.dp)
+            .testTag("doc_checkbox_${doc.id}")
+        )
+      }
+
       DocumentThumbnailView(doc = doc)
 
       Spacer(modifier = Modifier.width(12.dp))
@@ -600,59 +877,109 @@ fun VaultFileRow(
         }
       }
 
-      IconButton(onClick = onStarClick) {
-        Icon(
-          imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
-          contentDescription = "Star",
-          tint = if (doc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
-
-      Box {
-        IconButton(onClick = { showMenu = true }) {
+      if (!isSelectionMode) {
+        IconButton(onClick = onStarClick) {
           Icon(
-            imageVector = Icons.Default.MoreVert,
-            contentDescription = "More",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+            imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+            contentDescription = "Star",
+            tint = if (doc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
           )
         }
-        DropdownMenu(
-          expanded = showMenu,
-          onDismissRequest = { showMenu = false }
-        ) {
-          DropdownMenuItem(
-            text = { Text("Open Preview") },
-            onClick = {
-              showMenu = false
-              onClick()
-            },
-            leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null) }
-          )
-          DropdownMenuItem(
-            text = { Text("Delete") },
-            onClick = {
-              showMenu = false
-              onDeleteClick()
-            },
-            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = GenziiError) }
-          )
+
+        Box {
+          IconButton(onClick = { showMenu = true }) {
+            Icon(
+              imageVector = Icons.Default.MoreVert,
+              contentDescription = "More",
+              tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+          DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+          ) {
+            DropdownMenuItem(
+              text = { Text("Open Preview") },
+              onClick = {
+                showMenu = false
+                onClick()
+              },
+              leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null) }
+            )
+            DropdownMenuItem(
+              text = { Text("Delete") },
+              onClick = {
+                showMenu = false
+                onDeleteClick()
+              },
+              leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = GenziiError) }
+            )
+          }
         }
       }
     }
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FilePreviewScreen(
   docId: String,
   onBack: () -> Unit
 ) {
   val documents by GenziiRepository.documents.collectAsState()
-  val doc = documents.find { it.id == docId } ?: documents.firstOrNull()
+  val initialDoc = remember(documents, docId) {
+    documents.find { it.id == docId } ?: documents.firstOrNull()
+  }
+
+  if (initialDoc == null) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Text("Document not found")
+    }
+    return
+  }
+
+  // Determine whether to scroll across images (gallery mode) or all files in folder/vault
+  val isInitialImage = remember(initialDoc) {
+    initialDoc.type == FileType.IMAGE || isImageExtension(initialDoc.name)
+  }
+
+  val previewList = remember(documents, initialDoc, isInitialImage) {
+    if (isInitialImage) {
+      val inFolderImages = documents.filter {
+        it.folder.equals(initialDoc.folder, ignoreCase = true) &&
+        (it.type == FileType.IMAGE || isImageExtension(it.name))
+      }
+      if (inFolderImages.size > 1) {
+        inFolderImages
+      } else {
+        val allImages = documents.filter { it.type == FileType.IMAGE || isImageExtension(it.name) }
+        if (allImages.isNotEmpty()) allImages else listOf(initialDoc)
+      }
+    } else {
+      val inFolderDocs = documents.filter { it.folder.equals(initialDoc.folder, ignoreCase = true) }
+      if (inFolderDocs.isNotEmpty()) inFolderDocs else documents
+    }
+  }
+
+  val initialIndex = remember(previewList, docId) {
+    val idx = previewList.indexOfFirst { it.id == docId }
+    if (idx >= 0) idx else 0
+  }
+
+  val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+    initialPage = initialIndex,
+    pageCount = { previewList.size }
+  )
+
+  val currentDoc = previewList.getOrNull(pagerState.currentPage) ?: initialDoc
+  val isCurrentDocImage = currentDoc.type == FileType.IMAGE || isImageExtension(currentDoc.name)
+  val isCurrentDocPdf = currentDoc.type == FileType.PDF || currentDoc.name.lowercase().endsWith(".pdf")
+  val isCurrentDocEditable = !isCurrentDocImage && !isCurrentDocPdf
 
   var selectedTab by remember { mutableStateOf(0) } // 0: Preview, 1: Details
   var isEditing by remember { mutableStateOf(false) }
-  var editedContent by remember { mutableStateOf(doc?.content ?: "") }
+  var editedContent by remember(currentDoc.id) { mutableStateOf(currentDoc.content) }
   var showDeleteDialog by remember { mutableStateOf(false) }
   var showShareToast by remember { mutableStateOf(false) }
 
@@ -662,24 +989,24 @@ fun FilePreviewScreen(
   val exportLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.CreateDocument("application/pdf")
   ) { uri ->
-    if (uri != null && doc != null) {
+    if (uri != null && currentDoc != null) {
       coroutineScope.launch(Dispatchers.IO) {
         try {
-          if (doc.localFilePath != null && File(doc.localFilePath).exists()) {
+          if (currentDoc.localFilePath != null && File(currentDoc.localFilePath).exists()) {
             context.contentResolver.openOutputStream(uri)?.use { out ->
-              File(doc.localFilePath).inputStream().use { input -> input.copyTo(out) }
+              File(currentDoc.localFilePath).inputStream().use { input -> input.copyTo(out) }
             }
-          } else if (doc.type == FileType.PDF && doc.content.startsWith("%PDF")) {
+          } else if (currentDoc.type == FileType.PDF && currentDoc.content.startsWith("%PDF")) {
             context.contentResolver.openOutputStream(uri)?.use { out ->
-              out.write(doc.content.toByteArray())
+              out.write(currentDoc.content.toByteArray())
             }
           } else {
-            val genResult = PdfExportManager.generateDocumentPdf(context, doc.name, doc.content)
+            val genResult = PdfExportManager.generateDocumentPdf(context, currentDoc.name, currentDoc.content)
             if (genResult.isSuccess) {
               PdfExportManager.exportPdfToUri(context, genResult.getOrThrow(), uri)
             } else {
               context.contentResolver.openOutputStream(uri)?.use { out ->
-                out.write(doc.content.toByteArray())
+                out.write(currentDoc.content.toByteArray())
               }
             }
           }
@@ -695,13 +1022,6 @@ fun FilePreviewScreen(
     }
   }
 
-  if (doc == null) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text("Document not found")
-    }
-    return
-  }
-
   Scaffold(
     topBar = {
       Row(
@@ -712,20 +1032,39 @@ fun FilePreviewScreen(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
       ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
           IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
           }
-          Column {
+          Spacer(modifier = Modifier.width(4.dp))
+          Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                text = currentDoc.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+              )
+              if (previewList.size > 1) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                  shape = RoundedCornerShape(8.dp),
+                  color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                ) {
+                  Text(
+                    text = "${pagerState.currentPage + 1}/${previewList.size}",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                  )
+                }
+              }
+            }
             Text(
-              text = doc.name,
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Bold,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis
-            )
-            Text(
-              text = "${doc.sizeFormatted} • ${doc.type.name}",
+              text = "${currentDoc.sizeFormatted} • ${currentDoc.type.name}",
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -733,11 +1072,11 @@ fun FilePreviewScreen(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-          IconButton(onClick = { GenziiRepository.toggleStar(doc.id) }) {
+          IconButton(onClick = { GenziiRepository.toggleStar(currentDoc.id) }) {
             Icon(
-              imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+              imageVector = if (currentDoc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
               contentDescription = "Star",
-              tint = if (doc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
+              tint = if (currentDoc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
           IconButton(onClick = { showDeleteDialog = true }) {
@@ -766,14 +1105,14 @@ fun FilePreviewScreen(
         ) {
           BottomActionItem(label = "Share", icon = Icons.Outlined.Share) {
             try {
-              if (doc.localFilePath != null && File(doc.localFilePath).exists()) {
-                val file = File(doc.localFilePath)
+              if (currentDoc.localFilePath != null && File(currentDoc.localFilePath).exists()) {
+                val file = File(currentDoc.localFilePath)
                 val shareUri = androidx.core.content.FileProvider.getUriForFile(
                   context,
                   "${context.packageName}.fileprovider",
                   file
                 )
-                val mimeType = when (doc.type) {
+                val mimeType = when (currentDoc.type) {
                   FileType.PDF -> "application/pdf"
                   FileType.IMAGE -> "image/*"
                   FileType.DOCX -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -781,7 +1120,7 @@ fun FilePreviewScreen(
                 }
                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                   putExtra(Intent.EXTRA_STREAM, shareUri)
-                  putExtra(Intent.EXTRA_SUBJECT, doc.name)
+                  putExtra(Intent.EXTRA_SUBJECT, currentDoc.name)
                   type = mimeType
                   addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
@@ -789,8 +1128,8 @@ fun FilePreviewScreen(
               } else {
                 val sendIntent = Intent().apply {
                   action = Intent.ACTION_SEND
-                  putExtra(Intent.EXTRA_SUBJECT, doc.name)
-                  putExtra(Intent.EXTRA_TEXT, doc.content)
+                  putExtra(Intent.EXTRA_SUBJECT, currentDoc.name)
+                  putExtra(Intent.EXTRA_TEXT, currentDoc.content)
                   type = "text/plain"
                 }
                 context.startActivity(Intent.createChooser(sendIntent, "Share Document via"))
@@ -800,31 +1139,37 @@ fun FilePreviewScreen(
             }
           }
           BottomActionItem(label = "Export", icon = Icons.Outlined.Download) {
-            val exportName = if (doc.name.endsWith(".pdf", ignoreCase = true)) doc.name else "${doc.name}.pdf"
+            val exportName = if (currentDoc.name.endsWith(".pdf", ignoreCase = true)) currentDoc.name else "${currentDoc.name}.pdf"
             exportLauncher.launch(exportName)
           }
-          BottomActionItem(label = "Print", icon = Icons.Outlined.Print) {
-            coroutineScope.launch {
-              if (doc.localFilePath != null && File(doc.localFilePath).exists() && doc.type == FileType.PDF) {
-                PdfExportManager.printPdfFile(context, doc.name, File(doc.localFilePath))
-              } else {
-                val genResult = PdfExportManager.generateDocumentPdf(context, doc.name, doc.content)
-                if (genResult.isSuccess) {
-                  PdfExportManager.printPdfFile(context, doc.name, genResult.getOrThrow())
+          // Only show Print if NOT an image
+          if (!isCurrentDocImage) {
+            BottomActionItem(label = "Print", icon = Icons.Outlined.Print) {
+              coroutineScope.launch {
+                if (currentDoc.localFilePath != null && File(currentDoc.localFilePath).exists() && currentDoc.type == FileType.PDF) {
+                  PdfExportManager.printPdfFile(context, currentDoc.name, File(currentDoc.localFilePath))
                 } else {
-                  Toast.makeText(context, "Print preparation failed: ${genResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                  val genResult = PdfExportManager.generateDocumentPdf(context, currentDoc.name, currentDoc.content)
+                  if (genResult.isSuccess) {
+                    PdfExportManager.printPdfFile(context, currentDoc.name, genResult.getOrThrow())
+                  } else {
+                    Toast.makeText(context, "Print preparation failed: ${genResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                  }
                 }
               }
             }
           }
-          BottomActionItem(label = if (isEditing) "Save" else "Edit", icon = if (isEditing) Icons.Default.Save else Icons.Outlined.Edit) {
-            if (isEditing) {
-              GenziiRepository.updateDocumentContent(doc.id, editedContent)
-              isEditing = false
-              Toast.makeText(context, "Document updated", Toast.LENGTH_SHORT).show()
-            } else {
-              editedContent = doc.content
-              isEditing = true
+          // Only show Edit if editable text (not image, not PDF)
+          if (isCurrentDocEditable) {
+            BottomActionItem(label = if (isEditing) "Save" else "Edit", icon = if (isEditing) Icons.Default.Save else Icons.Outlined.Edit) {
+              if (isEditing) {
+                GenziiRepository.updateDocumentContent(currentDoc.id, editedContent)
+                isEditing = false
+                Toast.makeText(context, "Document updated", Toast.LENGTH_SHORT).show()
+              } else {
+                editedContent = currentDoc.content
+                isEditing = true
+              }
             }
           }
           BottomActionItem(label = "Encrypted", icon = Icons.Outlined.Lock) {
@@ -866,15 +1211,21 @@ fun FilePreviewScreen(
       Spacer(modifier = Modifier.height(14.dp))
 
       if (selectedTab == 0) {
-        RealDocumentViewer(
-          doc = doc,
-          isEditing = isEditing,
-          editedContent = editedContent,
-          onEditedContentChange = { editedContent = it },
+        androidx.compose.foundation.pager.HorizontalPager(
+          state = pagerState,
           modifier = Modifier
             .fillMaxWidth()
             .weight(1f)
-        )
+        ) { page ->
+          val pageDoc = previewList.getOrNull(page) ?: currentDoc
+          RealDocumentViewer(
+            doc = pageDoc,
+            isEditing = isEditing && page == pagerState.currentPage,
+            editedContent = editedContent,
+            onEditedContentChange = { editedContent = it },
+            modifier = Modifier.fillMaxSize()
+          )
+        }
       } else {
         // Details Tab
         Card(
@@ -889,20 +1240,20 @@ fun FilePreviewScreen(
               .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
           ) {
-            val computedChecksum = remember(doc.content) {
+            val computedChecksum = remember(currentDoc.content) {
               try {
                 val md = java.security.MessageDigest.getInstance("SHA-256")
-                val bytes = md.digest(doc.content.toByteArray(Charsets.UTF_8))
+                val bytes = md.digest(currentDoc.content.toByteArray(Charsets.UTF_8))
                 bytes.joinToString("") { "%02x".format(it) }
               } catch (_: Exception) {
                 "Verified"
               }
             }
-            DetailRow(title = "Folder", value = doc.folder)
-            DetailRow(title = "File Size", value = doc.sizeFormatted)
-            DetailRow(title = "File Format", value = doc.type.name)
-            DetailRow(title = "Last Modified", value = doc.updatedAt)
-            DetailRow(title = "Originality Score", value = if (doc.originalityScore != null) "${doc.originalityScore}%" else "Not scanned")
+            DetailRow(title = "Folder", value = currentDoc.folder)
+            DetailRow(title = "File Size", value = currentDoc.sizeFormatted)
+            DetailRow(title = "File Format", value = currentDoc.type.name)
+            DetailRow(title = "Last Modified", value = currentDoc.updatedAt)
+            DetailRow(title = "Originality Score", value = if (currentDoc.originalityScore != null) "${currentDoc.originalityScore}%" else "Not scanned")
             DetailRow(title = "Encryption", value = "AES-256-GCM (Zero-Knowledge)")
             DetailRow(title = "SHA-256 Checksum", value = computedChecksum.take(24) + "...")
           }
@@ -978,6 +1329,7 @@ fun BottomActionItem(
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VaultFolderViewScreen(
   folderName: String,
@@ -992,6 +1344,28 @@ fun VaultFolderViewScreen(
   }
 
   var showNewNoteDialog by remember { mutableStateOf(false) }
+  var sortOrder by remember {
+    mutableStateOf(DocumentSortOrder.fromId(GenziiRepository.getSavedSortOrder()))
+  }
+  var showSortMenu by remember { mutableStateOf(false) }
+  var isSelectionMode by remember { mutableStateOf(false) }
+  var selectedDocIds by remember { mutableStateOf(setOf<String>()) }
+  var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+
+  // Cancel multi-selection on system back press
+  BackHandler(enabled = isSelectionMode) {
+    isSelectionMode = false
+    selectedDocIds = emptySet()
+  }
+
+  val sortedFolderDocs = remember(folderDocs, sortOrder) {
+    when (sortOrder) {
+      DocumentSortOrder.DATE_NEWEST -> folderDocs.sortedByDescending { it.createdAt }
+      DocumentSortOrder.DATE_OLDEST -> folderDocs.sortedBy { it.createdAt }
+      DocumentSortOrder.NAME_AZ -> folderDocs.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+      DocumentSortOrder.NAME_ZA -> folderDocs.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
+  }
 
   val filePickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.OpenDocument()
@@ -1033,31 +1407,150 @@ fun VaultFolderViewScreen(
 
   Scaffold(
     topBar = {
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .statusBarsPadding()
-          .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        IconButton(onClick = onBack) {
-          Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+      if (isSelectionMode) {
+        Surface(
+          color = MaterialTheme.colorScheme.surface,
+          tonalElevation = 3.dp,
+          modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              IconButton(onClick = {
+                isSelectionMode = false
+                selectedDocIds = emptySet()
+              }) {
+                Icon(Icons.Default.Close, contentDescription = "Exit selection")
+              }
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "${selectedDocIds.size} selected",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+              )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              TextButton(onClick = {
+                if (selectedDocIds.size == sortedFolderDocs.size) {
+                  selectedDocIds = emptySet()
+                } else {
+                  selectedDocIds = sortedFolderDocs.map { it.id }.toSet()
+                }
+              }) {
+                Text(
+                  text = if (selectedDocIds.size == sortedFolderDocs.size && sortedFolderDocs.isNotEmpty()) "Deselect All" else "Select All",
+                  color = GenziiPurple,
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.SemiBold
+                )
+              }
+
+              IconButton(
+                onClick = {
+                  selectedDocIds.forEach { id ->
+                    GenziiRepository.toggleStar(id)
+                  }
+                  Toast.makeText(context, "Starred selected items", Toast.LENGTH_SHORT).show()
+                },
+                enabled = selectedDocIds.isNotEmpty()
+              ) {
+                Icon(Icons.Default.Star, contentDescription = "Star selected", tint = Color(0xFFFFB300))
+              }
+
+              IconButton(
+                onClick = { showBatchDeleteConfirm = true },
+                enabled = selectedDocIds.isNotEmpty()
+              ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete selected", tint = GenziiError)
+              }
+            }
+          }
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-          Text(
-            text = folderName,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-          )
-          Text(
-            text = "${folderDocs.size} files • AES-256 Enclave",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
-        }
-        IconButton(onClick = { filePickerLauncher.launch(arrayOf("*/*")) }) {
-          Icon(Icons.Default.UploadFile, contentDescription = "Import file", tint = GenziiPurple)
+      } else {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+          }
+          Spacer(modifier = Modifier.width(8.dp))
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = folderName,
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold
+            )
+            Text(
+              text = "${sortedFolderDocs.size} files • AES-256 Enclave",
+              fontSize = 11.sp,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+
+          // Sort Menu Dropdown
+          Box {
+            IconButton(
+              onClick = { showSortMenu = true },
+              modifier = Modifier.testTag("folder_sort_button")
+            ) {
+              Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort", tint = GenziiPurple)
+            }
+            DropdownMenu(
+              expanded = showSortMenu,
+              onDismissRequest = { showSortMenu = false },
+              modifier = Modifier.testTag("folder_sort_menu")
+            ) {
+              DocumentSortOrder.entries.forEach { order ->
+                DropdownMenuItem(
+                  text = {
+                    Text(
+                      text = order.displayName,
+                      fontWeight = if (sortOrder == order) FontWeight.Bold else FontWeight.Normal,
+                      color = if (sortOrder == order) GenziiPurple else MaterialTheme.colorScheme.onSurface
+                    )
+                  },
+                  onClick = {
+                    sortOrder = order
+                    GenziiRepository.saveSortOrder(order.id)
+                    showSortMenu = false
+                  },
+                  leadingIcon = {
+                    val icon = when (order) {
+                      DocumentSortOrder.DATE_NEWEST, DocumentSortOrder.DATE_OLDEST -> Icons.Outlined.Schedule
+                      DocumentSortOrder.NAME_AZ, DocumentSortOrder.NAME_ZA -> Icons.Outlined.SortByAlpha
+                    }
+                    Icon(
+                      imageVector = icon,
+                      contentDescription = null,
+                      tint = if (sortOrder == order) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                  },
+                  trailingIcon = {
+                    if (sortOrder == order) {
+                      Icon(Icons.Default.Check, contentDescription = "Active", tint = GenziiPurple)
+                    }
+                  },
+                  modifier = Modifier.testTag("folder_sort_item_${order.id}")
+                )
+              }
+            }
+          }
+
+          IconButton(onClick = { filePickerLauncher.launch(arrayOf("*/*")) }) {
+            Icon(Icons.Default.UploadFile, contentDescription = "Import file", tint = GenziiPurple)
+          }
         }
       }
     },
@@ -1159,15 +1652,64 @@ fun VaultFolderViewScreen(
           .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
       ) {
-        items(folderDocs) { doc ->
+        items(sortedFolderDocs, key = { it.id }) { doc ->
           VaultFileRow(
             doc = doc,
+            isSelectionMode = isSelectionMode,
+            isSelected = doc.id in selectedDocIds,
+            onToggleSelect = {
+              selectedDocIds = if (doc.id in selectedDocIds) {
+                selectedDocIds - doc.id
+              } else {
+                selectedDocIds + doc.id
+              }
+            },
+            onLongClick = {
+              if (!isSelectionMode) {
+                isSelectionMode = true
+                selectedDocIds = setOf(doc.id)
+              }
+            },
             onClick = { onOpenDocument(doc.id) },
             onStarClick = { GenziiRepository.toggleStar(doc.id) },
             onDeleteClick = { GenziiRepository.deleteDocument(doc.id) }
           )
         }
       }
+    }
+
+    if (showBatchDeleteConfirm) {
+      AlertDialog(
+        onDismissRequest = { showBatchDeleteConfirm = false },
+        title = {
+          Text("Delete ${selectedDocIds.size} items?", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold)
+        },
+        text = {
+          Text("Are you sure you want to delete these documents from $folderName? This action cannot be undone.")
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              selectedDocIds.forEach { id ->
+                GenziiRepository.deleteDocument(id)
+              }
+              val count = selectedDocIds.size
+              selectedDocIds = emptySet()
+              isSelectionMode = false
+              showBatchDeleteConfirm = false
+              Toast.makeText(context, "Deleted $count items", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiError)
+          ) {
+            Text("Delete")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showBatchDeleteConfirm = false }) {
+            Text("Cancel")
+          }
+        }
+      )
     }
 
     if (showNewNoteDialog) {

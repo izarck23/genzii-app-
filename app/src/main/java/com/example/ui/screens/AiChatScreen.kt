@@ -74,6 +74,7 @@ fun AiChatScreen(
   var showConsentDialog by remember { mutableStateOf(false) }
   var showClearChatDialog by remember { mutableStateOf(false) }
   var showRewardedAdDialog by remember { mutableStateOf(false) }
+  var showApiKeyDialog by remember { mutableStateOf(false) }
 
   val listState = rememberLazyListState()
   val coroutineScope = rememberCoroutineScope()
@@ -194,17 +195,32 @@ fun AiChatScreen(
                 color = MaterialTheme.colorScheme.onBackground
               )
               Spacer(modifier = Modifier.width(6.dp))
+              val isGeminiConfigured = GeminiService.isApiKeyConfigured(userProfile.customApiKey)
               Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) GenziiPurpleSoft.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant
+                shape = RoundedCornerShape(8.dp),
+                color = if (isGeminiConfigured) GenziiPurpleContainer else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                  .clip(RoundedCornerShape(8.dp))
+                  .clickable { showApiKeyDialog = true }
               ) {
-                Text(
-                  text = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) "3.5 Flash" else "Local AI",
-                  fontSize = 9.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = GenziiPurple,
-                  modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                )
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                  Icon(
+                    imageVector = if (isGeminiConfigured) Icons.Default.CheckCircle else Icons.Outlined.Key,
+                    contentDescription = null,
+                    tint = if (isGeminiConfigured) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(10.dp)
+                  )
+                  Spacer(modifier = Modifier.width(3.dp))
+                  Text(
+                    text = if (isGeminiConfigured) "Gemini 2.5 Flash" else "Connect Gemini",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isGeminiConfigured) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant
+                  )
+                }
               }
             }
             Text(
@@ -746,6 +762,78 @@ fun AiChatScreen(
         onRewardEarned = { scans, credits ->
           showRewardedAdDialog = false
           Toast.makeText(context, "Earned 10 AI credits!", Toast.LENGTH_SHORT).show()
+        }
+      )
+    }
+
+    // Gemini API Configuration Dialog
+    if (showApiKeyDialog) {
+      var enteredKey by remember { mutableStateOf(userProfile.customApiKey) }
+      var keyVisible by remember { mutableStateOf(false) }
+
+      AlertDialog(
+        onDismissRequest = { showApiKeyDialog = false },
+        title = {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = GenziiPurple)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Gemini API Setup", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold)
+          }
+        },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+              text = "Powered by Google Gemini 2.5 Flash. Enter your Gemini API key to activate real-time streaming, comprehensive scholarly research, and document originality verification.",
+              fontSize = 12.sp,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+              value = enteredKey,
+              onValueChange = { enteredKey = it },
+              label = { Text("Gemini API Key") },
+              placeholder = { Text("AIzaSy...") },
+              singleLine = true,
+              visualTransformation = if (keyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+              trailingIcon = {
+                IconButton(onClick = { keyVisible = !keyVisible }) {
+                  Icon(
+                    imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (keyVisible) "Hide key" else "Show key"
+                  )
+                }
+              },
+              modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+              text = "Keys are securely stored in your private device enclave and never sent to third parties.",
+              fontSize = 10.sp,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              GenziiRepository.updateAiSettings(
+                customKey = enteredKey.trim(),
+                temperature = userProfile.temperature,
+                useStreaming = userProfile.useStreaming
+              )
+              GenziiRepository.setCloudAiConsent(true)
+              showApiKeyDialog = false
+              Toast.makeText(context, "Gemini API key updated", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+          ) {
+            Text("Save & Connect")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showApiKeyDialog = false }) {
+            Text("Cancel")
+          }
         }
       )
     }

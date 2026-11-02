@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
 
 object GeminiService {
   private const val TAG = "GeminiService"
-  private const val MODEL_NAME = "gemini-3.8-flash"
+  private const val MODEL_NAME = "gemini-2.5-flash"
   private const val FALLBACK_MODEL = "gemini-flash-latest"
   private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL_NAME:generateContent"
   private const val STREAM_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL_NAME:streamGenerateContent?alt=sse"
