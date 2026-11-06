@@ -16,6 +16,7 @@ object GenziiRepository {
 
   fun init(context: Context) {
     appContext = context.applicationContext
+    isDeactivated = false
     try {
       val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
       val savedTheme = prefs?.getString(KEY_THEME, null)
@@ -32,14 +33,14 @@ object GenziiRepository {
   private var loadCacheJob: kotlinx.coroutines.Job? = null
   @Volatile private var isDeactivated: Boolean = false
 
-  fun loadCachedDocuments() {
-    val ctx = appContext ?: return
+  fun loadCachedDocuments(): kotlinx.coroutines.Job? {
+    val ctx = appContext ?: return null
     loadCacheJob?.cancel()
-    loadCacheJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+    val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
       try {
         val cacheManager = DocumentLocalCacheManager.getInstance(ctx)
         val cached = cacheManager.getCachedDocuments()
-        if (cached.isNotEmpty() && !isDeactivated && _userProfile.value.name != "Guest User") {
+        if (cached.isNotEmpty() && !isDeactivated) {
           _documents.update { current ->
             if (isDeactivated) emptyList()
             else {
@@ -56,6 +57,8 @@ object GenziiRepository {
         android.util.Log.e("GenziiRepository", "Failed to restore cached documents: ${e.message}")
       }
     }
+    loadCacheJob = job
+    return job
   }
 
   private fun persistDocumentChange(doc: DocumentItem) {

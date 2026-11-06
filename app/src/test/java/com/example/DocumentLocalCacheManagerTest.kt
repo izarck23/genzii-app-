@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class DocumentLocalCacheManagerTest {
 
   private lateinit var context: Context
@@ -146,11 +146,10 @@ class DocumentLocalCacheManagerTest {
     )
     cacheManager.cacheDocument(doc)
 
-    // Initialize repository from context
+    // Initialize repository from context and await cache restoration
     GenziiRepository.init(context)
-
-    // Give IO coroutine a brief moment to restore
-    kotlinx.coroutines.delay(100)
+    GenziiRepository.loadCachedDocuments()?.join()
+    kotlinx.coroutines.delay(50)
 
     val repoDocs = GenziiRepository.documents.value
     assertTrue(repoDocs.any { it.id == "doc-offline-restore" })

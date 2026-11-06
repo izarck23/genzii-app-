@@ -7,10 +7,10 @@ enum class FileType {
 data class DocumentItem(
   val id: String,
   val name: String,
-  val sizeFormatted: String,
+  val sizeFormatted: String = "0 B",
   val type: FileType,
-  val folder: String,
-  val updatedAt: String,
+  val folder: String = "Vault",
+  val updatedAt: String = "Just now",
   val originalityScore: Int? = null,
   val isEncrypted: Boolean = true,
   val content: String = "",

@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Purple circular brand badge -->
+    <path
+        android:fillColor="#6A1B9A"
+        android:pathData="M54,14 A40,40 0 1,0 54,94 A40,40 0 1,0 54,14 Z" />
+    <!-- Gradient accent ring -->
+    <path
+        android:fillColor="#8E24AA"
+        android:pathData="M54,20 A34,34 0 1,0 54,88 A34,34 0 1,0 54,20 Z" />
+    <path
+        android:fillColor="#6A1B9A"
+        android:pathData="M54,23 A31,31 0 1,0 54,85 A31,31 0 1,0 54,23 Z" />
+    <!-- Stylized modern "g" character -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34 C45,34 39,41 39,50 C39,59 45,66 54,66 C60,66 65,62 67,58 L67,69 C67,76 62,80 54,80 C48,80 43,77 41,72 L35,75 C38,83 45,86 54,86 C66,86 74,80 74,69 L74,36 L67,36 L67,42 C65,37 60,34 54,34 Z M54,40 C60,40 66,45 66,50 C66,56 60,60 54,60 C48,60 46,56 46,50 C46,45 48,40 54,40 Z" />
+    <!-- Floating spark accent dot -->
+    <path
+        android:fillColor="#E1BEE7"
+        android:pathData="M72,26 A6,6 0 1,0 72,38 A6,6 0 1,0 72,26 Z" />
+</vector>

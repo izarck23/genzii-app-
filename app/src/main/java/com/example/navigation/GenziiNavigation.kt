@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -132,17 +133,17 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
     modifier = Modifier
       .fillMaxWidth()
       .navigationBarsPadding()
-      .padding(horizontal = 20.dp, vertical = 10.dp),
+      .padding(horizontal = 16.dp, vertical = 8.dp),
     contentAlignment = Alignment.Center
   ) {
     Surface(
       shape = RoundedCornerShape(32.dp),
       color = MaterialTheme.colorScheme.surface,
-      tonalElevation = 6.dp,
-      shadowElevation = 12.dp,
+      tonalElevation = 8.dp,
+      shadowElevation = 14.dp,
       border = BorderStroke(
         width = 1.dp,
-        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
       ),
       modifier = Modifier
         .fillMaxWidth()
@@ -151,16 +152,40 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
+          .padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
       ) {
         BottomNavItems.forEach { item ->
           val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
 
+          val animatedIndicatorColor by androidx.compose.animation.animateColorAsState(
+            targetValue = if (isSelected) GenziiPurple.copy(alpha = 0.12f) else Color.Transparent,
+            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+            label = "indicatorColor"
+          )
+          val animatedIconTint by androidx.compose.animation.animateColorAsState(
+            targetValue = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+            label = "iconTint"
+          )
+          val animatedTextTint by androidx.compose.animation.animateColorAsState(
+            targetValue = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+            label = "textTint"
+          )
+          val animatedScale by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (isSelected) 1.12f else 1.0f,
+            animationSpec = androidx.compose.animation.core.spring(
+              dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+              stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+            ),
+            label = "iconScale"
+          )
+
           Surface(
             shape = RoundedCornerShape(20.dp),
-            color = if (isSelected) GenziiPurpleContainer else Color.Transparent,
+            color = animatedIndicatorColor,
             modifier = Modifier
               .clip(RoundedCornerShape(20.dp))
               .clickable {
@@ -178,24 +203,26 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
               horizontalAlignment = Alignment.CenterHorizontally,
               verticalArrangement = Arrangement.Center,
               modifier = Modifier
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
                 .defaultMinSize(minWidth = 56.dp, minHeight = 44.dp)
             ) {
               Icon(
                 imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
                 contentDescription = item.label,
-                tint = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(20.dp)
+                tint = animatedIconTint,
+                modifier = Modifier
+                  .size(20.dp)
+                  .scale(animatedScale)
               )
 
-              Spacer(modifier = Modifier.height(2.dp))
+              Spacer(modifier = Modifier.height(3.dp))
 
               Text(
                 text = item.label,
                 fontFamily = PoppinsFontFamily,
                 fontSize = 10.sp,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                color = animatedTextTint
               )
             }
           }

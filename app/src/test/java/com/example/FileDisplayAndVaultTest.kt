@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w600dp-h1200dp")
+@Config(sdk = [36], qualifiers = "w600dp-h1200dp")
 class FileDisplayAndVaultTest {
 
   @get:Rule

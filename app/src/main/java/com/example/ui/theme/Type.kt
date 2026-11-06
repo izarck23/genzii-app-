@@ -9,10 +9,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 
 val PoppinsFontFamily = FontFamily(
-  Font(R.font.poppins, FontWeight.Normal),
-  Font(R.font.poppins, FontWeight.Medium),
-  Font(R.font.poppins, FontWeight.SemiBold),
-  Font(R.font.poppins, FontWeight.Bold)
+  Font(R.font.poppins, FontWeight.Normal)
 )
 
 val GenziiTypography = Typography(

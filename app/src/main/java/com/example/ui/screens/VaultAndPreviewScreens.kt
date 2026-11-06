@@ -50,6 +50,7 @@ import com.example.model.FileType
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -939,26 +940,40 @@ fun FilePreviewScreen(
     return
   }
 
-  // Determine whether to scroll across images (gallery mode) or all files in folder/vault
+  // Determine whether this document is an image (by type or file extension)
   val isInitialImage = remember(initialDoc) {
     initialDoc.type == FileType.IMAGE || isImageExtension(initialDoc.name)
   }
 
+  // Build sorted preview collection: if opening an image, collect and sort all images in folder/vault
   val previewList = remember(documents, initialDoc, isInitialImage) {
+    val savedSort = DocumentSortOrder.fromId(GenziiRepository.getSavedSortOrder())
     if (isInitialImage) {
       val inFolderImages = documents.filter {
         it.folder.equals(initialDoc.folder, ignoreCase = true) &&
         (it.type == FileType.IMAGE || isImageExtension(it.name))
       }
-      if (inFolderImages.size > 1) {
+      val targetList = if (inFolderImages.isNotEmpty()) {
         inFolderImages
       } else {
         val allImages = documents.filter { it.type == FileType.IMAGE || isImageExtension(it.name) }
         if (allImages.isNotEmpty()) allImages else listOf(initialDoc)
       }
+      when (savedSort) {
+        DocumentSortOrder.DATE_NEWEST -> targetList.sortedByDescending { it.createdAt }
+        DocumentSortOrder.DATE_OLDEST -> targetList.sortedBy { it.createdAt }
+        DocumentSortOrder.NAME_AZ -> targetList.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        DocumentSortOrder.NAME_ZA -> targetList.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name })
+      }
     } else {
       val inFolderDocs = documents.filter { it.folder.equals(initialDoc.folder, ignoreCase = true) }
-      if (inFolderDocs.isNotEmpty()) inFolderDocs else documents
+      val targetList = if (inFolderDocs.isNotEmpty()) inFolderDocs else documents
+      when (savedSort) {
+        DocumentSortOrder.DATE_NEWEST -> targetList.sortedByDescending { it.createdAt }
+        DocumentSortOrder.DATE_OLDEST -> targetList.sortedBy { it.createdAt }
+        DocumentSortOrder.NAME_AZ -> targetList.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        DocumentSortOrder.NAME_ZA -> targetList.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name })
+      }
     }
   }
 
@@ -973,21 +988,28 @@ fun FilePreviewScreen(
   )
 
   val currentDoc = previewList.getOrNull(pagerState.currentPage) ?: initialDoc
+
+  // File-type-aware capability flags
   val isCurrentDocImage = currentDoc.type == FileType.IMAGE || isImageExtension(currentDoc.name)
   val isCurrentDocPdf = currentDoc.type == FileType.PDF || currentDoc.name.lowercase().endsWith(".pdf")
-  val isCurrentDocEditable = !isCurrentDocImage && !isCurrentDocPdf
+  val isCurrentDocEditable = !isCurrentDocImage && !isCurrentDocPdf &&
+      (currentDoc.type == FileType.TXT || currentDoc.name.endsWith(".txt", true) || currentDoc.name.endsWith(".md", true))
+  val isCurrentDocPrintable = !isCurrentDocImage && (isCurrentDocPdf || currentDoc.type == FileType.TXT)
 
   var selectedTab by remember { mutableStateOf(0) } // 0: Preview, 1: Details
   var isEditing by remember { mutableStateOf(false) }
   var editedContent by remember(currentDoc.id) { mutableStateOf(currentDoc.content) }
   var showDeleteDialog by remember { mutableStateOf(false) }
   var showShareToast by remember { mutableStateOf(false) }
+  var isImageZoomed by remember { mutableStateOf(false) }
 
   val context = LocalContext.current
   val coroutineScope = rememberCoroutineScope()
 
   val exportLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.CreateDocument("application/pdf")
+    contract = ActivityResultContracts.CreateDocument(
+      if (isCurrentDocImage) "image/png" else "application/pdf"
+    )
   ) { uri ->
     if (uri != null && currentDoc != null) {
       coroutineScope.launch(Dispatchers.IO) {
@@ -996,9 +1018,16 @@ fun FilePreviewScreen(
             context.contentResolver.openOutputStream(uri)?.use { out ->
               File(currentDoc.localFilePath).inputStream().use { input -> input.copyTo(out) }
             }
+          } else if (isCurrentDocImage && !currentDoc.uriString.isNullOrBlank()) {
+            val srcUri = android.net.Uri.parse(currentDoc.uriString)
+            context.contentResolver.openInputStream(srcUri)?.use { input ->
+              context.contentResolver.openOutputStream(uri)?.use { out ->
+                input.copyTo(out)
+              }
+            }
           } else if (currentDoc.type == FileType.PDF && currentDoc.content.startsWith("%PDF")) {
             context.contentResolver.openOutputStream(uri)?.use { out ->
-              out.write(currentDoc.content.toByteArray())
+              out.write(currentDoc.content.toByteArray(Charsets.ISO_8859_1))
             }
           } else {
             val genResult = PdfExportManager.generateDocumentPdf(context, currentDoc.name, currentDoc.content)
@@ -1011,11 +1040,11 @@ fun FilePreviewScreen(
             }
           }
           withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Exported successfully!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, if (isCurrentDocImage) "Image saved successfully!" else "Exported successfully!", Toast.LENGTH_SHORT).show()
           }
         } catch (e: Exception) {
           withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Save/Export failed: ${e.message}", Toast.LENGTH_LONG).show()
           }
         }
       }
@@ -1033,7 +1062,10 @@ fun FilePreviewScreen(
         horizontalArrangement = Arrangement.SpaceBetween
       ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-          IconButton(onClick = onBack) {
+          IconButton(
+            onClick = onBack,
+            modifier = Modifier.testTag("preview_back_button")
+          ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
           }
           Spacer(modifier = Modifier.width(4.dp))
@@ -1051,20 +1083,34 @@ fun FilePreviewScreen(
                 Spacer(modifier = Modifier.width(6.dp))
                 Surface(
                   shape = RoundedCornerShape(8.dp),
-                  color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                  color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                  modifier = Modifier.testTag("preview_page_indicator")
                 ) {
-                  Text(
-                    text = "${pagerState.currentPage + 1}/${previewList.size}",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                  )
+                  ) {
+                    if (isCurrentDocImage) {
+                      Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = GenziiPurple
+                      )
+                      Spacer(modifier = Modifier.width(3.dp))
+                    }
+                    Text(
+                      text = "${pagerState.currentPage + 1}/${previewList.size}",
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.SemiBold,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                  }
                 }
               }
             }
             Text(
-              text = "${currentDoc.sizeFormatted} • ${currentDoc.type.name}",
+              text = "${currentDoc.sizeFormatted} • ${if (isCurrentDocImage) "Image" else currentDoc.type.name}",
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1072,14 +1118,20 @@ fun FilePreviewScreen(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-          IconButton(onClick = { GenziiRepository.toggleStar(currentDoc.id) }) {
+          IconButton(
+            onClick = { GenziiRepository.toggleStar(currentDoc.id) },
+            modifier = Modifier.testTag("preview_action_star")
+          ) {
             Icon(
               imageVector = if (currentDoc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
               contentDescription = "Star",
               tint = if (currentDoc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
-          IconButton(onClick = { showDeleteDialog = true }) {
+          IconButton(
+            onClick = { showDeleteDialog = true },
+            modifier = Modifier.testTag("preview_action_delete")
+          ) {
             Icon(
               imageVector = Icons.Outlined.Delete,
               contentDescription = "Delete Document",
@@ -1101,9 +1153,15 @@ fun FilePreviewScreen(
           modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 10.dp, horizontal = 16.dp),
-          horizontalArrangement = Arrangement.SpaceAround
+          horizontalArrangement = Arrangement.SpaceAround,
+          verticalAlignment = Alignment.CenterVertically
         ) {
-          BottomActionItem(label = "Share", icon = Icons.Outlined.Share) {
+          // 1. Share (available for all valid file types)
+          BottomActionItem(
+            label = "Share",
+            icon = Icons.Outlined.Share,
+            testTag = "preview_action_share"
+          ) {
             try {
               if (currentDoc.localFilePath != null && File(currentDoc.localFilePath).exists()) {
                 val file = File(currentDoc.localFilePath)
@@ -1112,10 +1170,10 @@ fun FilePreviewScreen(
                   "${context.packageName}.fileprovider",
                   file
                 )
-                val mimeType = when (currentDoc.type) {
-                  FileType.PDF -> "application/pdf"
-                  FileType.IMAGE -> "image/*"
-                  FileType.DOCX -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                val mimeType = when {
+                  isCurrentDocImage -> "image/*"
+                  isCurrentDocPdf -> "application/pdf"
+                  currentDoc.type == FileType.DOCX -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   else -> "text/plain"
                 }
                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1124,7 +1182,7 @@ fun FilePreviewScreen(
                   type = mimeType
                   addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(sendIntent, "Share Document"))
+                context.startActivity(Intent.createChooser(sendIntent, "Share ${if (isCurrentDocImage) "Image" else "Document"}"))
               } else {
                 val sendIntent = Intent().apply {
                   action = Intent.ACTION_SEND
@@ -1138,15 +1196,30 @@ fun FilePreviewScreen(
               Toast.makeText(context, "Share error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
           }
-          BottomActionItem(label = "Export", icon = Icons.Outlined.Download) {
-            val exportName = if (currentDoc.name.endsWith(".pdf", ignoreCase = true)) currentDoc.name else "${currentDoc.name}.pdf"
+
+          // 2. Save / Export (label adapted per file type)
+          BottomActionItem(
+            label = if (isCurrentDocImage) "Save Image" else "Export",
+            icon = if (isCurrentDocImage) Icons.Outlined.SaveAlt else Icons.Outlined.Download,
+            testTag = "preview_action_export"
+          ) {
+            val exportName = if (isCurrentDocImage) {
+              if (currentDoc.name.contains(".")) currentDoc.name else "${currentDoc.name}.jpg"
+            } else {
+              if (currentDoc.name.endsWith(".pdf", ignoreCase = true)) currentDoc.name else "${currentDoc.name}.pdf"
+            }
             exportLauncher.launch(exportName)
           }
-          // Only show Print if NOT an image
-          if (!isCurrentDocImage) {
-            BottomActionItem(label = "Print", icon = Icons.Outlined.Print) {
+
+          // 3. Print (Only displayed when genuinely printable; NEVER for images)
+          if (isCurrentDocPrintable) {
+            BottomActionItem(
+              label = "Print",
+              icon = Icons.Outlined.Print,
+              testTag = "preview_action_print"
+            ) {
               coroutineScope.launch {
-                if (currentDoc.localFilePath != null && File(currentDoc.localFilePath).exists() && currentDoc.type == FileType.PDF) {
+                if (currentDoc.localFilePath != null && File(currentDoc.localFilePath).exists() && isCurrentDocPdf) {
                   PdfExportManager.printPdfFile(context, currentDoc.name, File(currentDoc.localFilePath))
                 } else {
                   val genResult = PdfExportManager.generateDocumentPdf(context, currentDoc.name, currentDoc.content)
@@ -1159,9 +1232,14 @@ fun FilePreviewScreen(
               }
             }
           }
-          // Only show Edit if editable text (not image, not PDF)
+
+          // 4. Edit (Only displayed for editable text documents; NEVER for images or PDFs)
           if (isCurrentDocEditable) {
-            BottomActionItem(label = if (isEditing) "Save" else "Edit", icon = if (isEditing) Icons.Default.Save else Icons.Outlined.Edit) {
+            BottomActionItem(
+              label = if (isEditing) "Save" else "Edit",
+              icon = if (isEditing) Icons.Default.Save else Icons.Outlined.Edit,
+              testTag = "preview_action_edit"
+            ) {
               if (isEditing) {
                 GenziiRepository.updateDocumentContent(currentDoc.id, editedContent)
                 isEditing = false
@@ -1172,7 +1250,13 @@ fun FilePreviewScreen(
               }
             }
           }
-          BottomActionItem(label = "Encrypted", icon = Icons.Outlined.Lock) {
+
+          // 5. Encrypted Enclave Badge / Info
+          BottomActionItem(
+            label = "Encrypted",
+            icon = Icons.Outlined.Lock,
+            testTag = "preview_action_encrypted"
+          ) {
             Toast.makeText(context, "AES-256 encrypted in private local enclave", Toast.LENGTH_SHORT).show()
           }
         }
@@ -1211,11 +1295,15 @@ fun FilePreviewScreen(
       Spacer(modifier = Modifier.height(14.dp))
 
       if (selectedTab == 0) {
+        // HorizontalPager for fluid swipe navigation between documents/images
+        // userScrollEnabled is disabled while the current image is zoomed in to avoid swipe conflicts
         androidx.compose.foundation.pager.HorizontalPager(
           state = pagerState,
+          userScrollEnabled = !isImageZoomed,
           modifier = Modifier
             .fillMaxWidth()
             .weight(1f)
+            .testTag("preview_pager")
         ) { page ->
           val pageDoc = previewList.getOrNull(page) ?: currentDoc
           RealDocumentViewer(
@@ -1223,6 +1311,11 @@ fun FilePreviewScreen(
             isEditing = isEditing && page == pagerState.currentPage,
             editedContent = editedContent,
             onEditedContentChange = { editedContent = it },
+            onZoomChange = { zoomed ->
+              if (page == pagerState.currentPage) {
+                isImageZoomed = zoomed
+              }
+            },
             modifier = Modifier.fillMaxSize()
           )
         }
@@ -1261,6 +1354,51 @@ fun FilePreviewScreen(
       }
 
       Spacer(modifier = Modifier.height(12.dp))
+    }
+
+    // Delete Confirmation Dialog
+    if (showDeleteDialog) {
+      AlertDialog(
+        onDismissRequest = { showDeleteDialog = false },
+        title = {
+          Text(
+            text = "Delete ${if (isCurrentDocImage) "Image" else "Document"}",
+            fontFamily = PoppinsFontFamily,
+            fontWeight = FontWeight.Bold
+          )
+        },
+        text = {
+          Text(
+            text = "Are you sure you want to permanently delete \"${currentDoc.name}\" from your Secure Vault? This cannot be undone.",
+            fontFamily = PoppinsFontFamily
+          )
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              val docToDeleteId = currentDoc.id
+              GenziiRepository.deleteDocument(docToDeleteId)
+              showDeleteDialog = false
+              Toast.makeText(context, "Deleted \"${currentDoc.name}\"", Toast.LENGTH_SHORT).show()
+              if (previewList.size <= 1) {
+                onBack()
+              }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiError),
+            modifier = Modifier.testTag("confirm_delete_button")
+          ) {
+            Text("Delete", color = Color.White)
+          }
+        },
+        dismissButton = {
+          TextButton(
+            onClick = { showDeleteDialog = false },
+            modifier = Modifier.testTag("cancel_delete_button")
+          ) {
+            Text("Cancel")
+          }
+        }
+      )
     }
 
     if (showShareToast) {
@@ -1304,12 +1442,14 @@ fun DetailRow(title: String, value: String) {
 fun BottomActionItem(
   label: String,
   icon: androidx.compose.ui.graphics.vector.ImageVector,
+  testTag: String = "",
   onClick: () -> Unit
 ) {
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     modifier = Modifier
       .clip(RoundedCornerShape(12.dp))
+      .then(if (testTag.isNotBlank()) Modifier.testTag(testTag) else Modifier)
       .clickable(onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 6.dp)
   ) {
@@ -1774,6 +1914,7 @@ fun RealDocumentViewer(
   isEditing: Boolean,
   editedContent: String,
   onEditedContentChange: (String) -> Unit,
+  onZoomChange: (Boolean) -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   if (isEditing) {
@@ -1832,10 +1973,12 @@ fun RealDocumentViewer(
           modifier = modifier
         )
       }
-      doc.type == FileType.IMAGE && resolvedLocalFile != null -> {
+      doc.type == FileType.IMAGE -> {
         RealImageViewer(
-          file = resolvedLocalFile,
+          doc = doc,
+          resolvedFile = resolvedLocalFile,
           ocrText = doc.content,
+          onZoomChange = onZoomChange,
           modifier = modifier
         )
       }
@@ -1898,7 +2041,7 @@ fun RealPdfViewer(
           pageBitmap = bitmap
           isLoading = false
         }
-      } catch (e: Exception) {
+      } catch (e: Throwable) {
         Log.e("RealPdfViewer", "Error rendering PDF page", e)
         withContext(Dispatchers.Main) {
           errorMessage = e.message ?: "Failed to render PDF page"
@@ -2135,17 +2278,58 @@ fun RealImageViewer(
   ocrText: String,
   modifier: Modifier = Modifier
 ) {
-  var selectedTab by remember { mutableStateOf(0) } // 0 = Image, 1 = OCR Text
-  var scale by remember { mutableFloatStateOf(1f) }
-  var offsetX by remember { mutableFloatStateOf(0f) }
-  var offsetY by remember { mutableFloatStateOf(0f) }
+  val doc = remember(file.absolutePath) {
+    DocumentItem(
+      id = file.name,
+      name = file.name,
+      sizeFormatted = "${(file.length() / 1024).coerceAtLeast(1)} KB",
+      type = FileType.IMAGE,
+      folder = "Vault",
+      updatedAt = "Just now",
+      content = ocrText,
+      localFilePath = file.absolutePath
+    )
+  }
+  RealImageViewer(
+    doc = doc,
+    resolvedFile = file,
+    ocrText = ocrText,
+    onZoomChange = {},
+    modifier = modifier
+  )
+}
 
-  val bitmap = remember(file.absolutePath) {
+@Composable
+fun RealImageViewer(
+  doc: DocumentItem,
+  resolvedFile: File?,
+  ocrText: String,
+  onZoomChange: (Boolean) -> Unit = {},
+  modifier: Modifier = Modifier
+) {
+  val context = LocalContext.current
+  var selectedTab by remember { mutableStateOf(0) } // 0 = Image, 1 = OCR Text
+  var scale by remember(doc.id) { mutableFloatStateOf(1f) }
+  var offsetX by remember(doc.id) { mutableFloatStateOf(0f) }
+  var offsetY by remember(doc.id) { mutableFloatStateOf(0f) }
+
+  val bitmap = remember(doc.id, resolvedFile?.absolutePath, doc.uriString) {
     try {
-      if (file.exists() && file.length() > 0L) {
-        BitmapFactory.decodeFile(file.absolutePath)
-      } else null
-    } catch (e: Exception) {
+      if (resolvedFile != null && resolvedFile.exists() && resolvedFile.length() > 0L) {
+        BitmapFactory.decodeFile(resolvedFile.absolutePath)
+      } else if (!doc.uriString.isNullOrBlank()) {
+        val uri = android.net.Uri.parse(doc.uriString)
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+          BitmapFactory.decodeStream(stream)
+        }
+      } else if (doc.content.startsWith("data:image") || doc.content.length > 100) {
+        val cleanBase64 = if (doc.content.contains(",")) doc.content.substringAfter(",") else doc.content
+        val decodedBytes = android.util.Base64.decode(cleanBase64, android.util.Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+      } else {
+        null
+      }
+    } catch (e: Throwable) {
       Log.e("RealImageViewer", "Failed to decode image file", e)
       null
     }
@@ -2182,11 +2366,21 @@ fun RealImageViewer(
             Row(verticalAlignment = Alignment.CenterVertically) {
               IconButton(
                 onClick = {
-                  scale = (scale / 1.3f).coerceAtLeast(1f)
-                  if (scale <= 1.05f) { scale = 1f; offsetX = 0f; offsetY = 0f }
+                  val newScale = (scale / 1.3f).coerceAtLeast(1f)
+                  if (newScale <= 1.05f) {
+                    scale = 1f
+                    offsetX = 0f
+                    offsetY = 0f
+                    onZoomChange(false)
+                  } else {
+                    scale = newScale
+                    onZoomChange(true)
+                  }
                 },
                 enabled = scale > 1f,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier
+                  .size(28.dp)
+                  .testTag("zoom_out_button")
               ) {
                 Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out", modifier = Modifier.size(16.dp))
               }
@@ -2195,19 +2389,34 @@ fun RealImageViewer(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = GenziiPurple,
-                modifier = Modifier.padding(horizontal = 2.dp)
+                modifier = Modifier
+                  .padding(horizontal = 2.dp)
+                  .testTag("zoom_level_text")
               )
               IconButton(
-                onClick = { scale = (scale * 1.3f).coerceAtMost(5f) },
+                onClick = {
+                  val newScale = (scale * 1.3f).coerceAtMost(5f)
+                  scale = newScale
+                  onZoomChange(newScale > 1.05f)
+                },
                 enabled = scale < 5f,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier
+                  .size(28.dp)
+                  .testTag("zoom_in_button")
               ) {
                 Icon(Icons.Default.ZoomIn, contentDescription = "Zoom In", modifier = Modifier.size(16.dp))
               }
               if (scale > 1f) {
                 IconButton(
-                  onClick = { scale = 1f; offsetX = 0f; offsetY = 0f },
-                  modifier = Modifier.size(28.dp)
+                  onClick = {
+                    scale = 1f
+                    offsetX = 0f
+                    offsetY = 0f
+                    onZoomChange(false)
+                  },
+                  modifier = Modifier
+                    .size(28.dp)
+                    .testTag("fit_to_screen_button")
                 ) {
                   Icon(Icons.Default.FitScreen, contentDescription = "Reset Zoom", modifier = Modifier.size(16.dp), tint = GenziiPurple)
                 }
@@ -2227,6 +2436,7 @@ fun RealImageViewer(
                 .background(if (selectedTab == 0) GenziiPurple else Color.Transparent)
                 .clickable { selectedTab = 0 }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
+                .testTag("image_tab_button")
             ) {
               Text(
                 "Image",
@@ -2241,6 +2451,7 @@ fun RealImageViewer(
                 .background(if (selectedTab == 1) GenziiPurple else Color.Transparent)
                 .clickable { selectedTab = 1 }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
+                .testTag("ocr_tab_button")
             ) {
               Text(
                 "OCR Text",
@@ -2265,15 +2476,34 @@ fun RealImageViewer(
               modifier = Modifier
                 .fillMaxSize()
                 .clipToBounds()
-                .pointerInput(Unit) {
+                .pointerInput(doc.id) {
+                  detectTapGestures(
+                    onDoubleTap = {
+                      if (scale > 1.2f) {
+                        scale = 1f
+                        offsetX = 0f
+                        offsetY = 0f
+                        onZoomChange(false)
+                      } else {
+                        scale = 2.5f
+                        onZoomChange(true)
+                      }
+                    }
+                  )
+                }
+                .pointerInput(doc.id) {
                   detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 5f)
-                    if (scale > 1f) {
+                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+                    scale = newScale
+                    if (newScale > 1.05f) {
                       offsetX += pan.x
                       offsetY += pan.y
+                      onZoomChange(true)
                     } else {
+                      scale = 1f
                       offsetX = 0f
                       offsetY = 0f
+                      onZoomChange(false)
                     }
                   }
                 },
@@ -2289,14 +2519,17 @@ fun RealImageViewer(
                     scaleY = scale,
                     translationX = offsetX,
                     translationY = offsetY
-                  ),
+                  )
+                  .testTag("preview_image_display"),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit
               )
             }
           } else {
             Column(
               horizontalAlignment = Alignment.CenterHorizontally,
-              modifier = Modifier.padding(16.dp)
+              modifier = Modifier
+                .padding(16.dp)
+                .testTag("preview_image_missing_state")
             ) {
               Icon(Icons.Default.Image, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(48.dp))
               Spacer(modifier = Modifier.height(8.dp))
@@ -2316,6 +2549,7 @@ fun RealImageViewer(
             .fillMaxSize()
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
+            .testTag("preview_ocr_text_content")
         ) {
           Text(
             text = ocrText.ifBlank { "No text recognized from this image." },
