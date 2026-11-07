@@ -429,8 +429,11 @@ object GenziiRepository {
         val finalText = if (result.isSuccess) {
           result.getOrThrow()
         } else {
-          accumulated.toString().ifBlank {
-            "I encountered an issue generating a response. Please check network connectivity or your API key settings."
+          val errorDetail = result.exceptionOrNull()?.message
+          if (accumulated.isNotEmpty()) {
+            accumulated.toString() + "\n\n⚠️ " + (errorDetail ?: "Stream interrupted.")
+          } else {
+            errorDetail ?: "I encountered an issue generating a response. Please check network connectivity or your API key settings."
           }
         }
 
@@ -440,13 +443,15 @@ object GenziiRepository {
               msg.copy(
                 text = finalText,
                 isStreaming = false,
-                isError = result.isFailure && accumulated.isEmpty(),
-                suggestionChips = listOf("Elaborate further", "Export to Vault", "Check Originality")
+                isError = result.isFailure,
+                suggestionChips = if (result.isSuccess) listOf("Elaborate further", "Export to Vault", "Check Originality") else emptyList()
               )
             } else msg
           }
         }
-        _userProfile.update { it.copy(chatsCount = it.chatsCount + 1) }
+        if (result.isSuccess) {
+          _userProfile.update { it.copy(chatsCount = it.chatsCount + 1) }
+        }
       } catch (e: kotlinx.coroutines.CancellationException) {
         // Handled in cancelActiveGeneration
       } catch (e: Exception) {

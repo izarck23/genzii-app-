@@ -35,15 +35,24 @@ object GeminiService {
     .build()
 
   /**
-   * Resolves the active API key, prioritizing custom user keys over injected secrets.
+   * Validates whether a provided API key string is non-empty, non-placeholder, and of sufficient length.
+   */
+  fun isKeyValid(key: String?): Boolean {
+    val clean = key?.trim() ?: return false
+    return clean.length > 10 && clean != "MY_GEMINI_API_KEY" && !clean.contains("PLACEHOLDER", ignoreCase = true)
+  }
+
+  /**
+   * Resolves the active API key, prioritizing valid custom user keys over injected secrets.
    */
   fun getActiveApiKey(customKey: String? = null): String {
-    if (!customKey.isNullOrBlank() && customKey.length > 10) {
-      return customKey.trim()
+    val cleanCustom = customKey?.trim()
+    if (isKeyValid(cleanCustom)) {
+      return cleanCustom!!
     }
     return try {
       val key = BuildConfig.GEMINI_API_KEY
-      if (key.isNotBlank() && key != "MY_GEMINI_API_KEY" && !key.contains("PLACEHOLDER", ignoreCase = true)) {
+      if (isKeyValid(key)) {
         key
       } else {
         ""
@@ -57,8 +66,7 @@ object GeminiService {
    * Checks if a valid non-placeholder Gemini API key is configured.
    */
   fun isApiKeyConfigured(customKey: String? = null): Boolean {
-    val key = getActiveApiKey(customKey)
-    return key.isNotBlank() && key.length > 10
+    return getActiveApiKey(customKey).isNotBlank()
   }
 
   /**
@@ -224,8 +232,8 @@ object GeminiService {
   }
 
   /**
-   * Real-time ChatGPT-style Server-Sent Events (SSE) streaming chat with Google Gemini 3.5 Flash.
-   * Supports multi-turn conversation history, contextual file analysis, and immediate cancellation.
+   * Real-time ChatGPT-style Server-Sent Events (SSE) streaming chat with Google Gemini 2.5 Flash.
+   * Supports multi-turn conversation history, contextual file analysis, and honest error reporting.
    */
   suspend fun streamChatWithGemini(
     userMessage: String,
@@ -239,12 +247,8 @@ object GeminiService {
     val apiKey = getActiveApiKey(customApiKey)
 
     if (!isApiKeyConfigured(customApiKey)) {
-      // Fallback to high-quality local streaming engine
-      return@withContext simulateSmartStreaming(
-        userMessage = userMessage,
-        fileName = fileName,
-        fileContext = fileContext,
-        onChunk = onChunkReceived
+      return@withContext Result.failure(
+        IllegalStateException("Gemini API key is not configured. Please enter your API key in AI Studio Secrets panel or Settings.")
       )
     }
 
@@ -312,8 +316,7 @@ object GeminiService {
         .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
         .build()
 
-      var call = okHttpClient.newCall(request)
-      var response = call.execute()
+      var response = okHttpClient.newCall(request).execute()
 
       if (!response.isSuccessful && response.code == 404) {
         Log.w(TAG, "Primary stream model 404, retrying with fallback stream model: $FALLBACK_MODEL")
@@ -322,20 +325,19 @@ object GeminiService {
           .url(url)
           .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
           .build()
-        call = okHttpClient.newCall(request)
-        response = call.execute()
+        response = okHttpClient.newCall(request).execute()
       }
 
       if (!response.isSuccessful) {
         val errBody = response.body?.string() ?: ""
         Log.w(TAG, "Gemini SSE Stream error ${response.code}: $errBody")
-        // Graceful fallback to smart local streaming
-        return@withContext simulateSmartStreaming(
-          userMessage = userMessage,
-          fileName = fileName,
-          fileContext = fileContext,
-          onChunk = onChunkReceived
-        )
+        val errorMsg = when (response.code) {
+          429 -> "Rate limit reached (HTTP 429). Please wait a moment and tap Retry."
+          400, 403 -> "Invalid or unauthorized Gemini API key. Please check your key in Settings."
+          404 -> "Gemini model is currently unavailable (HTTP 404). Please try again shortly."
+          else -> "Gemini API call failed (HTTP ${response.code}). Tap Retry to generate again."
+        }
+        return@withContext executeUnaryFallback(requestBodyJson, apiKey, errorMsg, onChunkReceived)
       }
 
       val accumulatedText = StringBuilder()
@@ -364,7 +366,7 @@ object GeminiService {
                   accumulatedText.append(textChunk)
                   onChunkReceived(textChunk)
                 }
-              } catch (e: Exception) {
+              } catch (_: Exception) {
                 // Partial JSON chunk skip
               }
             }
@@ -377,151 +379,62 @@ object GeminiService {
       if (resultText.isNotBlank()) {
         Result.success(resultText)
       } else {
-        simulateSmartStreaming(userMessage, fileName, fileContext, onChunkReceived)
+        executeUnaryFallback(
+          requestBodyJson = requestBodyJson,
+          apiKey = apiKey,
+          errorMessageOnFail = "No response content received from Gemini. Please tap Retry.",
+          onChunkReceived = onChunkReceived
+        )
       }
     } catch (e: Exception) {
       if (e is kotlinx.coroutines.CancellationException) {
         throw e
       }
-      Log.w(TAG, "Streaming fallback triggered due to: ${e.message}")
-      simulateSmartStreaming(userMessage, fileName, fileContext, onChunkReceived)
+      Log.e(TAG, "Streaming connection error", e)
+      Result.failure(
+        Exception("Network error: ${e.message ?: "Unable to connect to Gemini API"}. Please check your connection and tap Retry.", e)
+      )
     }
   }
 
   /**
-   * Intelligent on-device local streaming engine.
-   * Generates token-by-token streaming responses for academic writing, summarization, and file analysis.
+   * Unary non-streaming fallback when SSE streaming is unavailable.
    */
-  private suspend fun simulateSmartStreaming(
-    userMessage: String,
-    fileName: String?,
-    fileContext: String?,
-    onChunk: (String) -> Unit
+  private suspend fun executeUnaryFallback(
+    requestBodyJson: JSONObject,
+    apiKey: String,
+    errorMessageOnFail: String,
+    onChunkReceived: (String) -> Unit
   ): Result<String> {
-    val fullResponse = buildSmartResponse(userMessage, fileName, fileContext)
-    val tokens = fullResponse.split(Regex("(?<=\\s)|(?<=\\n)"))
-
-    val accumulated = StringBuilder()
-    for (token in tokens) {
-      currentCoroutineContext().ensureActive()
-      accumulated.append(token)
-      onChunk(token)
-      delay(28) // realistic token streaming cadence
-    }
-
-    return Result.success(accumulated.toString())
-  }
-
-  private fun buildSmartResponse(
-    userMessage: String,
-    fileName: String?,
-    fileContext: String?
-  ): String {
-    val hasFile = !fileContext.isNullOrBlank()
-    val cleanPrompt = userMessage.lowercase()
-
-    return when {
-      hasFile && (cleanPrompt.contains("summar") || cleanPrompt.contains("overview")) -> {
-        """
-        # Executive Summary: ${fileName ?: "Attached Document"}
-        
-        Based on the local parsing of **${fileName ?: "your document"}**, here is a comprehensive breakdown of key arguments and empirical findings:
-        
-        ### 📌 Key Core Arguments
-        • **Central Thesis:** The document establishes systematic paradigms for scaling and optimization, emphasizing structural integrity and reproducibility.
-        • **Methodological Framework:** Utilizes hybrid empirical testing benchmarks across high-density datasets.
-        • **Primary Bottleneck Identified:** Conventional models suffer memory overhead during quadratic parameter scaling.
-        
-        ### 🔍 Actionable Research Insights
-        1. **Cross-Citation:** Enhance section 3 with citations from indexed peer-reviewed sources (IEEE & ACM).
-        2. **Originality Verification:** Run the Genzii Originality Checker on revised drafts to confirm unique phrasing.
-        3. **Vault Archival:** Secure this version in the Genzii Encrypted Vault to maintain proof of authorship.
-        
-        > *Tip: You can ask Genzii to extract methodology bullet points or generate counter-arguments for your defense.*
-        """.trimIndent()
+    return try {
+      val unaryUrl = "$BASE_URL?key=$apiKey"
+      val request = Request.Builder()
+        .url(unaryUrl)
+        .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
+        .build()
+      val response = okHttpClient.newCall(request).execute()
+      if (response.isSuccessful) {
+        val respBody = response.body?.string() ?: ""
+        val respJson = JSONObject(respBody)
+        val candidates = respJson.optJSONArray("candidates")
+        val firstCandidate = candidates?.optJSONObject(0)
+        val content = firstCandidate?.optJSONObject("content")
+        val parts = content?.optJSONArray("parts")
+        val text = parts?.optJSONObject(0)?.optString("text")
+        if (!text.isNullOrBlank()) {
+          onChunkReceived(text)
+          return Result.success(text)
+        }
       }
-
-      hasFile -> {
-        """
-        ### Contextual Document Analysis: ${fileName ?: "Attached File"}
-        
-        I have analyzed your attached document in relation to your question: *"userMessage"*.
-        
-        **Key Findings:**
-        • **Alignment with Query:** The document directly addresses this via contextual models and operational benchmarks.
-        • **Data Quality:** The source material provides clear qualitative evidence supporting your premise.
-        • **Recommendations:**
-          - Streamline the introductory literature review to focus on primary contributions.
-          - Re-check statistical metrics before submitting to your academic review board.
-          
-        Would you like me to draft an abstract or rewrite specific paragraphs in a formal academic tone?
-        """.trimIndent()
-      }
-
-      cleanPrompt.contains("essay") || cleanPrompt.contains("draft") -> {
-        """
-        # Academic Essay Blueprint
-        
-        Here is a structured, publication-ready framework tailored to your prompt:
-        
-        ### 1. Introduction & Thesis Statement
-        *Modern autonomous systems demand a dual commitment: computational acceleration paired with rigorous, verifiable integrity.*
-        
-        ### 2. Methodological Architecture
-        • **Historical Foundation:** Evolution from symbolic logic to transformer backbones.
-        • **The Authorship Dilemma:** Distinguishing machine-assisted synthesis from human intellectual ownership.
-        • **Empirical Mitigation:** Utilizing cryptographic watermark signatures and reproducible citation benchmarks.
-        
-        ### 3. Conclusion & Implications
-        Summarizes overarching findings while opening future avenues for empirical validation.
-        
-        ```markdown
-        [Suggested Next Steps]
-        - Click 'Check Originality' to verify novelty of phrasing.
-        - Export this outline directly to your Genzii Secure Vault.
-        ```
-        """.trimIndent()
-      }
-
-      cleanPrompt.contains("improve") || cleanPrompt.contains("grammar") || cleanPrompt.contains("refine") -> {
-        """
-        ### Text Refinement & Style Enhancement
-        
-        I have reviewed the passage for scholarly tone, clarity, and conciseness:
-        
-        **Tonal Enhancements Applied:**
-        • **Active Voice:** Converted passive constructions into decisive authorial claims.
-        • **Lexical Precision:** Replaced vague colloquial phrases with domain-specific terminology.
-        • **Structural Flow:** Enhanced transition markers between premises and conclusions.
-        
-        > **Revised Text Excerpt:**
-        > *"Empirical benchmarking confirms that model throughput scales monotonically when paired with sparse attention matrices, achieving state-of-the-art inference efficiency."*
-        
-        Would you like a side-by-side comparison or another revision style (e.g. APA vs. IEEE)?
-        """.trimIndent()
-      }
-
-      else -> {
-        """
-        ### Genzii Academic Neural Analysis
-        
-        I've processed your inquiry: **"$userMessage"**. Here is structured guidance to accelerate your academic workflow:
-        
-        • **Core Insight:** Ground your arguments with empirical benchmarks and primary literature.
-        • **Originality Safeguard:** Ensure all paraphrased concepts include direct citations to avoid inadvertent similarity flags.
-        • **Zero-Knowledge Security:** All documents stored in Genzii remain client-side encrypted in your private vault.
-        
-        **Suggested Actions:**
-        1. Attach a PDF or DOCX file using the paperclip icon for deep contextual analysis.
-        2. Run an instant Originality Check on your draft.
-        3. Convert notes into flashcards or study quizzes using the Study Tools.
-        """.trimIndent()
-      }
+      Result.failure(Exception(errorMessageOnFail))
+    } catch (e: Exception) {
+      if (e is kotlinx.coroutines.CancellationException) throw e
+      Result.failure(Exception(errorMessageOnFail, e))
     }
   }
 
   /**
-   * Synchronous single-turn fallback chat.
+   * Synchronous single-turn chat with Google Gemini.
    */
   suspend fun chatWithGemini(userMessage: String, customApiKey: String? = null): Result<String> {
     var accumulated = ""
@@ -535,6 +448,7 @@ object GeminiService {
   /**
    * Generates tailored text transformation for academic writing tools:
    * Essay Writer, Paraphraser, Grammar Checker, Summarizer, Tone Changer, Content Generator.
+   * Calls real Google Gemini API and handles errors cleanly.
    */
   suspend fun generateWritingTransformation(
     tool: String,
@@ -544,122 +458,68 @@ object GeminiService {
     if (sourceText.isBlank()) return@withContext "Please enter source text to process."
 
     val apiKey = getActiveApiKey(customApiKey)
-    if (isApiKeyConfigured(customApiKey)) {
-      try {
-        val taskInstruction = when (tool) {
-          "Paraphraser" -> "Rephrase the following academic passage with sophisticated vocabulary and distinct syntactic structure while preserving core meaning."
-          "Summarizer" -> "Provide a concise, dense academic summary extracting key arguments, findings, and implications."
-          "Grammar Checker" -> "Proofread and correct all grammar, punctuation, and stylistic inconsistencies, returning the polished version followed by a bulleted changelog."
-          "Essay Writer" -> "Develop the following prompt or argument into a well-structured academic essay section with an introduction, thesis, supporting evidence, and analytical conclusion."
-          "Tone Changer" -> "Convert the tone of the following text into authoritative, publication-ready formal academic English."
-          else -> "Generate comprehensive, structured scholarly content expanding upon the following ideas."
-        }
-
-        val requestBody = JSONObject().apply {
-          put("contents", JSONArray().apply {
-            put(JSONObject().apply {
-              put("parts", JSONArray().apply {
-                put(JSONObject().put("text", "$taskInstruction\n\nInput Text:\n\"\"\"\n$sourceText\n\"\"\"\n\nRespond directly with the final output without conversational greetings."))
-              })
-            })
-          })
-        }
-
-        val request = Request.Builder()
-          .url("$BASE_URL?key=$apiKey")
-          .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
-          .build()
-
-        val response = okHttpClient.newCall(request).execute()
-        if (response.isSuccessful) {
-          val respJson = JSONObject(response.body?.string() ?: "{}")
-          val candidates = respJson.optJSONArray("candidates")
-          if (candidates != null && candidates.length() > 0) {
-            val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
-            val text = parts?.getJSONObject(0)?.optString("text")
-            if (!text.isNullOrBlank()) return@withContext text.trim()
-          }
-        }
-      } catch (e: Exception) {
-        Log.w(TAG, "Online writing generation failed: ${e.message}, falling back to local engine")
-      }
+    if (!isApiKeyConfigured(customApiKey)) {
+      return@withContext "Gemini API key is not configured. Please enter your API key in Settings or AI Studio Secrets to use $tool."
     }
 
-    // High quality offline / local linguistic transformation
-    val trimmed = sourceText.trim()
-    val words = trimmed.split(Regex("\\s+"))
-    when (tool) {
-      "Paraphraser" -> {
-        "Academic Paraphrase:\n\n" + trimmed
-          .replace("due to the fact that", "inasmuch as", ignoreCase = true)
-          .replace("quickly", "exponentially", ignoreCase = true)
-          .replace("issue", "principal constraint", ignoreCase = true)
-          .replace("big", "substantial", ignoreCase = true)
-          .replace("good", "advantageous", ignoreCase = true)
-          .replace("bad", "detrimental", ignoreCase = true)
-          .replace("make", "generate", ignoreCase = true)
-          .replace("show", "substantiate", ignoreCase = true)
-          .replace("use", "leverage", ignoreCase = true)
-          .let {
-            if (it == trimmed) {
-              "Empirical evaluation reveals that $it, demonstrating measurable significance across comparative baselines."
-            } else it
-          }
-      }
-      "Summarizer" -> {
-        val sentences = trimmed.split(Regex("(?<=[.!?])\\s+"))
-        buildString {
-          appendLine("Key Executive Summary:")
-          appendLine("• Core Proposition: ${sentences.firstOrNull() ?: trimmed}")
-          if (sentences.size > 1) {
-            appendLine("• Critical Synthesis: ${sentences.getOrNull(1)}")
-          }
-          if (sentences.size > 2) {
-            appendLine("• Outcome / Finding: ${sentences.last()}")
-          }
-          appendLine()
-          appendLine("Total word count condensed from ${words.size} words.")
-        }
-      }
-      "Grammar Checker" -> {
-        buildString {
-          appendLine("Grammar & Mechanics Verified (100% Academic Precision):")
-          appendLine()
-          appendLine(trimmed.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }.let {
-            if (!it.endsWith(".")) "$it." else it
+    val taskInstruction = when (tool) {
+      "Paraphraser" -> "Rephrase the following academic passage with sophisticated vocabulary and distinct syntactic structure while preserving core meaning."
+      "Summarizer" -> "Provide a concise, dense academic summary extracting key arguments, findings, and implications."
+      "Grammar Checker" -> "Proofread and correct all grammar, punctuation, and stylistic inconsistencies, returning the polished version followed by a bulleted changelog."
+      "Essay Writer" -> "Develop the following prompt or argument into a well-structured academic essay section with an introduction, thesis, supporting evidence, and analytical conclusion."
+      "Tone Changer" -> "Convert the tone of the following text into authoritative, publication-ready formal academic English."
+      else -> "Generate comprehensive, structured scholarly content expanding upon the following ideas."
+    }
+
+    val requestBody = JSONObject().apply {
+      put("contents", JSONArray().apply {
+        put(JSONObject().apply {
+          put("parts", JSONArray().apply {
+            put(JSONObject().put("text", "$taskInstruction\n\nInput Text:\n\"\"\"\n$sourceText\n\"\"\"\n\nRespond directly with the final output without conversational greetings."))
           })
-          appendLine()
-          appendLine("Changelog:")
-          appendLine("• Verified subject-verb agreement and tense continuity.")
-          appendLine("• Standardized academic punctuation and clause boundaries.")
-          appendLine("• Checked active/passive voice cohesion across sentences.")
+        })
+      })
+    }
+
+    try {
+      var url = "$BASE_URL?key=$apiKey"
+      var request = Request.Builder()
+        .url(url)
+        .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+        .build()
+
+      var response = okHttpClient.newCall(request).execute()
+      var respString = response.body?.string() ?: ""
+
+      if (!response.isSuccessful && response.code == 404) {
+        url = "$FALLBACK_BASE_URL?key=$apiKey"
+        request = Request.Builder()
+          .url(url)
+          .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+          .build()
+        response = okHttpClient.newCall(request).execute()
+        respString = response.body?.string() ?: ""
+      }
+
+      if (response.isSuccessful) {
+        val respJson = JSONObject(respString)
+        val candidates = respJson.optJSONArray("candidates")
+        if (candidates != null && candidates.length() > 0) {
+          val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts")
+          val text = parts?.getJSONObject(0)?.optString("text")
+          if (!text.isNullOrBlank()) return@withContext text.trim()
         }
       }
-      "Essay Writer" -> {
-        buildString {
-          appendLine("1. Introduction & Theoretical Context")
-          appendLine("The contemporary academic landscape highlights that $trimmed. Understanding these dynamics is paramount for establishing robust foundational models.")
-          appendLine()
-          appendLine("2. Methodological Analysis & Findings")
-          appendLine("Systematic examination indicates that empirical rigor must guide implementation phases, mitigating bottlenecks and enhancing overall analytical throughput.")
-          appendLine()
-          appendLine("3. Synthesis & Conclusion")
-          appendLine("Consequently, future research paradigms should prioritize scalable optimizations aligned with verified domain practices.")
-        }
+
+      when (response.code) {
+        429 -> "Rate limit reached (HTTP 429). Please wait a moment and try again."
+        400, 403 -> "Invalid or unauthorized Gemini API key. Please check your key in Settings."
+        else -> "Gemini API request failed (HTTP ${response.code}). Please verify your connection and try again."
       }
-      "Tone Changer" -> {
-        "Formal Academic Publication Tone:\n\n" +
-          "It is demonstrated through systematic investigation that " +
-          trimmed.replaceFirstChar { it.lowercase() } +
-          ", underscoring the necessity for methodological rigor and validated reproducibility across scholarly inquiries."
-      }
-      else -> {
-        "Structured Content Output:\n\n" +
-          "Comprehensive analysis regarding: \"$trimmed\"\n\n" +
-          "• Strategic Pillar 1: Foundational literature alignment\n" +
-          "• Strategic Pillar 2: Empirical testing and validation\n" +
-          "• Strategic Pillar 3: Policy, practice, and research implications."
-      }
+    } catch (e: Exception) {
+      if (e is kotlinx.coroutines.CancellationException) throw e
+      Log.e(TAG, "Writing transformation network error", e)
+      "Network connection error: ${e.message ?: "Unable to connect to Gemini API"}. Please try again."
     }
   }
 }

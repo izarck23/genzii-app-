@@ -93,4 +93,36 @@ class ExampleUnitTest {
     GenziiRepository.cancelActiveGeneration()
     assertFalse(GenziiRepository.isGenerating.value)
   }
+
+  @Test
+  fun testGeminiApiKeyDetection() {
+    assertFalse(com.example.network.GeminiService.isKeyValid(""))
+    assertFalse(com.example.network.GeminiService.isKeyValid("short"))
+    assertFalse(com.example.network.GeminiService.isKeyValid("MY_GEMINI_API_KEY"))
+    assertFalse(com.example.network.GeminiService.isKeyValid("PLACEHOLDER_KEY"))
+    assertTrue(com.example.network.GeminiService.isKeyValid("AIzaSyValidGeminiKey123456789"))
+    assertTrue(com.example.network.GeminiService.isApiKeyConfigured("AIzaSyValidGeminiKey123456789"))
+  }
+
+  @Test
+  fun testChatRetryLogic() {
+    GenziiRepository.clearChatHistory()
+    GenziiRepository.sendChatMessage("Explain quantum computing")
+    val initialCount = GenziiRepository.chatMessages.value.size
+    assertTrue(initialCount >= 2)
+
+    GenziiRepository.retryLastMessage()
+    val retryMessages = GenziiRepository.chatMessages.value
+    assertTrue(retryMessages.isNotEmpty())
+    val lastUser = retryMessages.lastOrNull { it.isUser }
+    assertEquals("Explain quantum computing", lastUser?.text)
+  }
+
+  @Test
+  fun testLegalDocTypes() {
+    val types = com.example.ui.screens.LegalDocType.values()
+    assertEquals(2, types.size)
+    assertTrue(types.contains(com.example.ui.screens.LegalDocType.PRIVACY_POLICY))
+    assertTrue(types.contains(com.example.ui.screens.LegalDocType.TERMS_OF_SERVICE))
+  }
 }

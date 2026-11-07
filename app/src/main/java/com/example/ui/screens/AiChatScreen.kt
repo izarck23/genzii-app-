@@ -128,7 +128,10 @@ fun AiChatScreen(
   }
 
   fun handleSendPrompt(text: String) {
-    if (text.isBlank()) return
+    if (isGenerating) return
+    val queryToProcess = text.trim()
+    if (queryToProcess.isBlank() && attachedFile == null) return
+
     // Check if cloud processing consent is required
     val needsConsent = !userProfile.isCloudAiConsentGranted && GeminiService.isApiKeyConfigured(userProfile.customApiKey)
     if (needsConsent) {
@@ -137,7 +140,7 @@ fun AiChatScreen(
       return
     }
 
-    val finalQuery = text.trim()
+    val finalQuery = if (queryToProcess.isNotBlank()) queryToProcess else "Please analyze the attached document."
     val currAttached = attachedFile
     inputQuery = ""
     attachedFile = null
@@ -431,12 +434,14 @@ fun AiChatScreen(
               )
             }
           } else {
+            val canSend = (inputQuery.isNotBlank() || attachedFile != null) && !isGenerating
             IconButton(
-              onClick = { handleSendPrompt(inputQuery) },
+              onClick = { if (canSend) handleSendPrompt(inputQuery) },
+              enabled = canSend,
               modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(if (inputQuery.isNotBlank() || attachedFile != null) GenziiPurple else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                .background(if (canSend) GenziiPurple else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                 .testTag("chat_send_button")
             ) {
               Icon(
@@ -507,6 +512,9 @@ fun AiChatScreen(
             },
             onRetryClick = {
               GenziiRepository.retryLastMessage()
+            },
+            onConfigureApiKeyClick = {
+              showApiKeyDialog = true
             }
           )
         }
@@ -844,7 +852,8 @@ fun AiChatScreen(
 fun ChatBubbleItem(
   message: ChatMessage,
   onActionChipClick: (String) -> Unit,
-  onRetryClick: () -> Unit
+  onRetryClick: () -> Unit,
+  onConfigureApiKeyClick: () -> Unit = {}
 ) {
   val clipboardManager = LocalClipboardManager.current
   val context = LocalContext.current
@@ -992,20 +1001,53 @@ fun ChatBubbleItem(
           if (message.isError) {
             Spacer(modifier = Modifier.height(8.dp))
             Surface(
-              shape = RoundedCornerShape(8.dp),
-              color = Color(0xFFFDE8E8)
+              shape = RoundedCornerShape(10.dp),
+              color = Color(0xFFFDE8E8),
+              border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF8B4B4))
             ) {
-              Row(
-                modifier = Modifier.padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                  text = "Failed to complete. Tap Retry to generate again.",
-                  fontSize = 11.sp,
-                  color = Color(0xFFC53030)
-                )
+              Column(modifier = Modifier.padding(10.dp)) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = "Request failed. Check below for retry options.",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    color = Color(0xFFC53030)
+                  )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Button(
+                    onClick = onRetryClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(30.dp)
+                  ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Retry", fontSize = 11.sp, color = Color.White)
+                  }
+
+                  if (message.text.contains("API key", ignoreCase = true) || message.text.contains("key", ignoreCase = true)) {
+                    OutlinedButton(
+                      onClick = onConfigureApiKeyClick,
+                      shape = RoundedCornerShape(8.dp),
+                      contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                      modifier = Modifier.height(30.dp)
+                    ) {
+                      Icon(Icons.Outlined.Key, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color(0xFFC53030))
+                      Spacer(modifier = Modifier.width(4.dp))
+                      Text("Enter API Key", fontSize = 11.sp, color = Color(0xFFC53030))
+                    }
+                  }
+                }
               }
             }
           }

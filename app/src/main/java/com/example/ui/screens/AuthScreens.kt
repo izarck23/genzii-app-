@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -39,6 +41,168 @@ import com.example.ui.components.GenziiLogo
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
+enum class LegalDocType {
+  PRIVACY_POLICY,
+  TERMS_OF_SERVICE
+}
+
+@Composable
+fun LegalDocumentDialog(
+  docType: LegalDocType,
+  onDismiss: () -> Unit
+) {
+  val context = LocalContext.current
+  val isPrivacy = docType == LegalDocType.PRIVACY_POLICY
+  val title = if (isPrivacy) "Privacy Policy" else "Terms of Service"
+  val url = if (isPrivacy) "https://genzii.app/privacy" else "https://genzii.app/terms"
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    icon = {
+      Box(
+        modifier = Modifier
+          .size(44.dp)
+          .clip(CircleShape)
+          .background(GenziiPurpleContainer),
+        contentAlignment = Alignment.Center
+      ) {
+        Icon(
+          imageVector = if (isPrivacy) Icons.Outlined.PrivacyTip else Icons.Outlined.Gavel,
+          contentDescription = null,
+          tint = GenziiPurple,
+          modifier = Modifier.size(24.dp)
+        )
+      }
+    },
+    title = {
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+          text = title,
+          fontFamily = PoppinsFontFamily,
+          fontWeight = FontWeight.Bold,
+          fontSize = 18.sp,
+          color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+          text = "Genzii Academic Workspace • Google Play Compliant",
+          fontSize = 11.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+      }
+    },
+    text = {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .heightIn(max = 420.dp)
+          .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+      ) {
+        if (isPrivacy) {
+          Text(
+            text = "Effective Date: November 2026",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = GenziiPurple
+          )
+          Text(
+            text = "At Genzii, your academic confidentiality, intellectual ownership, and personal privacy are foundational principles. This Privacy Policy details how your information is handled:",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 17.sp
+          )
+
+          Card(
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+          ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text("1. Zero-Knowledge Client Vault", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("All files saved into your Secure Vault are encrypted client-side using industry-standard AES-256-GCM. We never transmit or store your master decryption keys.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("2. Opt-in Cloud AI Processing", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("Prompts and attached document context are transmitted only when you initiate an AI query. Data is sent over TLS 1.3 encrypted HTTPS strictly to Google Gemini API servers. Data is processed transiently and is never sold to third-party data brokers or used for public model training.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("3. Zero Broad Storage Permissions", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("In compliance with modern Android and Google Play guidelines, Genzii never requests broad storage access (MANAGE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE). File selection uses the zero-permission Android Photo Picker and Storage Access Framework (SAF).", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("4. Camera Permission for OCR", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("Camera permission is only requested contextually when you choose to scan physical book pages or documents using the Camera Scanner. Camera streams are processed locally using on-device Google ML Kit OCR and are never streamed to remote servers.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("5. User Rights & Data Deletion", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("You retain total control over your data. You can export documents, clear your chat histories, or delete your account at any time in Profile & Settings > Privacy & Security.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+            }
+          }
+        } else {
+          Text(
+            text = "Effective Date: November 2026",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = GenziiPurple
+          )
+          Text(
+            text = "Welcome to Genzii. By registering or using our workspace, you agree to these Terms of Service:",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 17.sp
+          )
+
+          Card(
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+          ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text("1. Academic Integrity & Responsible Use", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("Genzii provides AI writing tools, paraphrasing, originality detection, and study aids to accelerate scholarly inquiry. You remain solely responsible for adhering to your academic institution's honor codes, course guidelines, and proper citation standards.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("2. Intellectual Property Ownership", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("You own all rights, titles, and interests in the documents, notes, and research materials you import into Genzii, as well as the derivative transformations produced through your prompts.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("3. Account & Device Security", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("You are responsible for maintaining the confidentiality of your credentials. You can enable biometric App Lock and two-factor authentication inside the application for heightened protection.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("4. Prohibited Conduct", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("You agree not to use Genzii to generate unlawful, defamatory, or abusive content, nor attempt to decompile, reverse engineer, or disrupt the platform's infrastructure.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+
+              Text("5. Service Availability", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+              Text("Genzii is provided on an 'as is' and 'as available' basis with ongoing stability and security updates.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = onDismiss,
+        colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+        shape = RoundedCornerShape(12.dp)
+      ) {
+        Text("Understood & Close")
+      }
+    },
+    dismissButton = {
+      TextButton(
+        onClick = {
+          try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+          } catch (_: Exception) {
+            Toast.makeText(context, "Visit: $url", Toast.LENGTH_SHORT).show()
+          }
+        }
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Outlined.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp), tint = GenziiPurple)
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("Open in Browser", color = GenziiPurple, fontSize = 12.sp)
+        }
+      }
+    }
+  )
+}
+
 @Composable
 fun LoginScreen(
   onLoginSuccess: () -> Unit,
@@ -52,6 +216,14 @@ fun LoginScreen(
   var isPasswordVisible by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var isLoading by remember { mutableStateOf(false) }
+  var activeLegalDoc by remember { mutableStateOf<LegalDocType?>(null) }
+
+  if (activeLegalDoc != null) {
+    LegalDocumentDialog(
+      docType = activeLegalDoc!!,
+      onDismiss = { activeLegalDoc = null }
+    )
+  }
 
   Scaffold(
     containerColor = MaterialTheme.colorScheme.background
@@ -355,7 +527,55 @@ fun LoginScreen(
         )
       }
 
-      Spacer(modifier = Modifier.height(24.dp))
+      Spacer(modifier = Modifier.height(16.dp))
+
+      // Terms of Service and Privacy Policy Links
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "By continuing, you agree to our ",
+          fontSize = 11.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontFamily = PoppinsFontFamily
+        )
+        Text(
+          text = "Terms",
+          fontSize = 11.sp,
+          fontWeight = FontWeight.Bold,
+          color = GenziiPurple,
+          fontFamily = PoppinsFontFamily,
+          modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { activeLegalDoc = LegalDocType.TERMS_OF_SERVICE }
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+            .testTag("login_terms_link")
+        )
+        Text(
+          text = " & ",
+          fontSize = 11.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontFamily = PoppinsFontFamily
+        )
+        Text(
+          text = "Privacy Policy",
+          fontSize = 11.sp,
+          fontWeight = FontWeight.Bold,
+          color = GenziiPurple,
+          fontFamily = PoppinsFontFamily,
+          modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { activeLegalDoc = LegalDocType.PRIVACY_POLICY }
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+            .testTag("login_privacy_link")
+        )
+      }
+
+      Spacer(modifier = Modifier.height(16.dp))
     }
   }
 }
@@ -375,6 +595,14 @@ fun CreateAccountScreen(
   var isPasswordVisible by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var isLoading by remember { mutableStateOf(false) }
+  var activeLegalDoc by remember { mutableStateOf<LegalDocType?>(null) }
+
+  if (activeLegalDoc != null) {
+    LegalDocumentDialog(
+      docType = activeLegalDoc!!,
+      onDismiss = { activeLegalDoc = null }
+    )
+  }
 
   Scaffold(
     containerColor = MaterialTheme.colorScheme.background
@@ -676,7 +904,55 @@ fun CreateAccountScreen(
         )
       }
 
-      Spacer(modifier = Modifier.height(24.dp))
+      Spacer(modifier = Modifier.height(16.dp))
+
+      // Terms of Service and Privacy Policy Links
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "By continuing, you agree to our ",
+          fontSize = 11.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontFamily = PoppinsFontFamily
+        )
+        Text(
+          text = "Terms",
+          fontSize = 11.sp,
+          fontWeight = FontWeight.Bold,
+          color = GenziiPurple,
+          fontFamily = PoppinsFontFamily,
+          modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { activeLegalDoc = LegalDocType.TERMS_OF_SERVICE }
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+            .testTag("signup_terms_link")
+        )
+        Text(
+          text = " & ",
+          fontSize = 11.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontFamily = PoppinsFontFamily
+        )
+        Text(
+          text = "Privacy Policy",
+          fontSize = 11.sp,
+          fontWeight = FontWeight.Bold,
+          color = GenziiPurple,
+          fontFamily = PoppinsFontFamily,
+          modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { activeLegalDoc = LegalDocType.PRIVACY_POLICY }
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+            .testTag("signup_privacy_link")
+        )
+      }
+
+      Spacer(modifier = Modifier.height(16.dp))
     }
   }
 }

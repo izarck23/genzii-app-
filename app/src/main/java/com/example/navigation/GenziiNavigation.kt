@@ -255,7 +255,7 @@ fun GenziiNavGraph(
     composable(Screen.Onboarding.route) {
       OnboardingScreen(
         onFinishOnboarding = {
-          navController.navigate(Screen.Permissions.route) {
+          navController.navigate(Screen.Login.route) {
             popUpTo(Screen.Onboarding.route) { inclusive = true }
           }
         }
