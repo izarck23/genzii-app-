@@ -3,12 +3,10 @@ name: Genzii Android CI
 on:
   push:
     branches:
-      - main
-      - master
+      - '**'
+    tags:
+      - '**'
   pull_request:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 concurrency:
@@ -33,33 +31,55 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Accept Android SDK Licenses
+        run: |
+          mkdir -p "${ANDROID_HOME}/licenses" || true
+          echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e\n89336d0b3d537924970c50b615e66b0fe43e9342" > "${ANDROID_HOME}/licenses/android-sdk-license"
+          echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd\n85627f443315a6b8026132f8a442750e2417fd9e" > "${ANDROID_HOME}/licenses/android-sdk-preview-license"
+          echo -e "\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a" > "${ANDROID_HOME}/licenses/google-gdk-license"
+          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/tools/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+          if command -v sdkmanager &> /dev/null; then
+            yes | sdkmanager --licenses || true
+          fi
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
           validate-wrappers: false
 
-      - name: Accept Android SDK Licenses
-        run: |
-          yes | sdkmanager --licenses || true
-
       - name: Ensure Environment Configuration & Keystore
+        env:
+          REPO_SECRET_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # Ensure .env exists with valid fallback
+          # 1. Ensure .env.example exists with placeholder
+          if [ ! -f .env.example ]; then
+            echo "GEMINI_API_KEY=PLACEHOLDER_GEMINI_API_KEY" > .env.example
+          fi
+
+          # 2. Ensure .env exists with valid fallback
           if [ ! -f .env ]; then
-            if [ -f .env.example ]; then
+            if [ -n "$REPO_SECRET_GEMINI_KEY" ]; then
+              echo "Using GEMINI_API_KEY from repository secrets..."
+              echo "GEMINI_API_KEY=$REPO_SECRET_GEMINI_KEY" > .env
+            elif [ -f .env.example ]; then
               echo "Creating .env from .env.example..."
               cp .env.example .env
             else
-              echo 'GEMINI_API_KEY="PLACEHOLDER_API_KEY"' > .env
+              echo 'GEMINI_API_KEY=PLACEHOLDER_GEMINI_API_KEY' > .env
             fi
           fi
 
-          # Ensure debug.keystore exists with fallback to keytool
+          # 3. Ensure debug.keystore exists with fallback to keytool
           if [ ! -f debug.keystore ]; then
             if [ -f debug.keystore.base64 ]; then
-              echo "Restoring debug.keystore from base64 (ignoring line wraps)..."
-              base64 -d -i debug.keystore.base64 > debug.keystore || base64 --decode debug.keystore.base64 > debug.keystore || true
+              echo "Restoring debug.keystore from base64..."
+              base64 -d -i debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
             fi
             if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
               echo "Generating fresh debug.keystore..."
@@ -89,10 +109,10 @@ jobs:
           ls -lh "$APK_PATH"
           sha256sum "$APK_PATH"
           mkdir -p APK testing
-          cp "$APK_PATH" APK/Genzii-com-genzii-app-latest.apk
-          cp "$APK_PATH" APK/Genzii-com-genzii-latest.apk
-          cp "$APK_PATH" APK/app-debug.apk
-          cp "$APK_PATH" testing/Genzii-debug.apk
+          cp -f "$APK_PATH" APK/Genzii-com-genzii-app-latest.apk
+          cp -f "$APK_PATH" APK/Genzii-com-genzii-latest.apk
+          cp -f "$APK_PATH" APK/app-debug.apk
+          cp -f "$APK_PATH" testing/Genzii-debug.apk
           ls -lh testing/Genzii-debug.apk
           sha256sum testing/Genzii-debug.apk
           echo "Verifying APK signing certificate fingerprints..."
@@ -102,7 +122,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Genzii-Android-APK
-          path: testing/Genzii-debug.apk
+          path: |
+            testing/Genzii-debug.apk
+            APK/Genzii-com-genzii-app-latest.apk
           retention-days: 30
           if-no-files-found: error
 
