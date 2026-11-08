@@ -53,7 +53,8 @@ data class OriginalityReport(
   val wordsCount: Int,
   val scanDate: String,
   val sources: List<SourceMatch>,
-  val highlightedContent: String
+  val highlightedContent: String,
+  val aiAnalysis: String = ""
 )
 
 data class ChatMessage(

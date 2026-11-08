@@ -24,15 +24,24 @@ class ExampleUnitTest {
   }
 
   @Test
-  fun testOriginalityScan() = kotlinx.coroutines.runBlocking {
-    val report = GenziiRepository.scanOriginality(
+  fun testOriginalityScanRequiresApiKey() = kotlinx.coroutines.runBlocking {
+    GenziiRepository.updateAiSettings(customKey = "", temperature = 0.5f, useStreaming = true)
+    val failureResult = GenziiRepository.scanOriginality(
       title = "Attention_Paper.pdf",
       text = "Modern attention mechanisms improve synthesis fidelity in transformer backbones."
     )
-    assertNotNull(report)
-    assertTrue(report.originalPercentage in 50..100)
-    assertEquals(100 - report.originalPercentage, report.similarityPercentage)
-    assertTrue(report.sources.isNotEmpty())
+    assertTrue("Scan must return failure when API key is not configured, refusing to return fake data", failureResult.isFailure)
+    assertTrue(failureResult.exceptionOrNull()?.message?.contains("API key", ignoreCase = true) == true)
+  }
+
+  @Test
+  fun testOriginalityScanRejectsBlankText() = kotlinx.coroutines.runBlocking {
+    val blankResult = GenziiRepository.scanOriginality(
+      title = "Empty.txt",
+      text = "   "
+    )
+    assertTrue(blankResult.isFailure)
+    assertTrue(blankResult.exceptionOrNull() is IllegalArgumentException)
   }
 
   @Test

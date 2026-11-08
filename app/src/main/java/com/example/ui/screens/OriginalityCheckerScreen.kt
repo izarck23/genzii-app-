@@ -67,7 +67,10 @@ fun OriginalityCheckerScreen(
   var showFullReportModal by remember { mutableStateOf(false) }
   var showRewardedAdDialog by remember { mutableStateOf(false) }
   var showInterstitialAdDialog by remember { mutableStateOf(false) }
-  val isGeminiLive = remember { GeminiService.isApiKeyConfigured() }
+  val userProfile by GenziiRepository.userProfile.collectAsState()
+  val isGeminiLive = remember(userProfile.customApiKey) { GeminiService.isApiKeyConfigured(userProfile.customApiKey) }
+  var scanErrorMessage by remember { mutableStateOf<String?>(null) }
+  var showApiKeyDialog by remember { mutableStateOf(false) }
 
   val coroutineScope = rememberCoroutineScope()
 
@@ -456,9 +459,105 @@ fun OriginalityCheckerScreen(
             }
           }
         } else {
+          // Honest Error Message Banner
+          if (scanErrorMessage != null) {
+            Card(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+              shape = RoundedCornerShape(16.dp),
+              colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
+              )
+            ) {
+              Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    imageVector = Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                  )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = "Analysis Unavailable",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                  )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                  text = scanErrorMessage!!,
+                  fontFamily = PoppinsFontFamily,
+                  fontSize = 12.sp,
+                  lineHeight = 17.sp,
+                  color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.End,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  TextButton(
+                    onClick = { scanErrorMessage = null }
+                  ) {
+                    Text("Dismiss", color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
+                  }
+                  if (!isGeminiLive) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                      onClick = { showApiKeyDialog = true },
+                      colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+                    ) {
+                      Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text("Set API Key", fontSize = 12.sp)
+                    }
+                  } else {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                      onClick = {
+                        scanErrorMessage = null
+                        isScanning = true
+                        coroutineScope.launch {
+                          val result = GenziiRepository.scanOriginality(
+                            title = documentTitle.ifBlank { "Scanned_Text.txt" },
+                            text = textInput
+                          )
+                          isScanning = false
+                          if (result.isSuccess) {
+                            activeReport = result.getOrThrow()
+                            scanErrorMessage = null
+                            showInterstitialAdDialog = true
+                          } else {
+                            val ex = result.exceptionOrNull()
+                            scanErrorMessage = ex?.message ?: "Analysis could not be completed. Please check your network and try again."
+                          }
+                        }
+                      },
+                      colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+                    ) {
+                      Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text("Retry Scan", fontSize = 12.sp)
+                    }
+                  }
+                }
+              }
+            }
+          }
+
           Button(
             onClick = {
               if (textInput.isNotBlank()) {
+                scanErrorMessage = null
+                if (!isGeminiLive) {
+                  scanErrorMessage = "Google Gemini API key is required to perform real-time originality and plagiarism analysis. Please enter your API key to proceed."
+                  showApiKeyDialog = true
+                  return@Button
+                }
                 isScanning = true
                 coroutineScope.launch {
                   val result = GenziiRepository.scanOriginality(
@@ -466,8 +565,14 @@ fun OriginalityCheckerScreen(
                     text = textInput
                   )
                   isScanning = false
-                  activeReport = result
-                  showInterstitialAdDialog = true
+                  if (result.isSuccess) {
+                    activeReport = result.getOrThrow()
+                    scanErrorMessage = null
+                    showInterstitialAdDialog = true
+                  } else {
+                    val ex = result.exceptionOrNull()
+                    scanErrorMessage = ex?.message ?: "Analysis could not be completed. Please check your network connection and API key."
+                  }
                 }
               }
             },
@@ -554,7 +659,7 @@ fun OriginalityCheckerScreen(
                   )
                   Spacer(modifier = Modifier.width(6.dp))
                   Text(
-                    text = if (report.scanDate.contains("Gemini")) "Verified by Google Gemini 3.5 Flash" else "Genzii Academic Neural Engine",
+                    text = "Verified by Google Gemini 2.5 Flash",
                     fontFamily = PoppinsFontFamily,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -583,7 +688,46 @@ fun OriginalityCheckerScreen(
           }
         }
 
-        // Top Sources Section Header
+        // AI-Generated Writing Analysis Card (Distinguishing AI Analysis)
+        if (report.aiAnalysis.isNotBlank()) {
+          item {
+            Card(
+              shape = RoundedCornerShape(18.dp),
+              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+              elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = GenziiPurple,
+                    modifier = Modifier.size(18.dp)
+                  )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = "AI-Generated Originality Analysis",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                  )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                  text = report.aiAnalysis,
+                  fontFamily = PoppinsFontFamily,
+                  fontSize = 13.sp,
+                  lineHeight = 18.sp,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              }
+            }
+          }
+        }
+
+        // Verified Sources Section Header
         item {
           Row(
             modifier = Modifier.fillMaxWidth(),
@@ -591,22 +735,72 @@ fun OriginalityCheckerScreen(
             verticalAlignment = Alignment.CenterVertically
           ) {
             Text(
-              text = "Top sources",
+              text = "Verified source matches",
               style = MaterialTheme.typography.titleMedium,
               fontWeight = FontWeight.Bold,
               color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-              text = "${report.sources.size} identified",
+              text = if (report.sources.isEmpty()) "0 matches found" else "${report.sources.size} identified",
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
         }
 
-        // Top sources list
-        items(report.sources) { source ->
-          SourceMatchCard(source = source)
+        // Verified sources list or clean zero-match card
+        if (report.sources.isEmpty()) {
+          item {
+            Card(
+              modifier = Modifier.fillMaxWidth(),
+              shape = RoundedCornerShape(14.dp),
+              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+              elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8F5E9)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF2E7D32),
+                    modifier = Modifier.size(24.dp)
+                  )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = "No Plagiarism or External Matches Found",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                  )
+                  Spacer(modifier = Modifier.height(2.dp))
+                  Text(
+                    text = "Zero matching literature found across indexed public sources. Content exhibits authentic authorship.",
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                  )
+                }
+              }
+            }
+          }
+        } else {
+          items(report.sources) { source ->
+            SourceMatchCard(source = source)
+          }
         }
 
         // Action Buttons: View Full Report & New Scan
@@ -699,6 +893,22 @@ fun OriginalityCheckerScreen(
                 Text("${report.similarityPercentage}% Similarity", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
               }
             }
+            if (report.aiAnalysis.isNotBlank()) {
+              Spacer(modifier = Modifier.height(12.dp))
+              Text(
+                text = "AI-Generated Originality Assessment:",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp
+              )
+              Spacer(modifier = Modifier.height(4.dp))
+              Text(
+                text = report.aiAnalysis,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = MaterialTheme.colorScheme.onBackground
+              )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
             Text(
               text = "Highlighted Matches Excerpt:",
@@ -769,6 +979,78 @@ fun OriginalityCheckerScreen(
     if (showInterstitialAdDialog) {
       GoogleTestInterstitialAdDialog(
         onDismiss = { showInterstitialAdDialog = false }
+      )
+    }
+
+    // Gemini API Setup Dialog
+    if (showApiKeyDialog) {
+      var enteredKey by remember { mutableStateOf(userProfile.customApiKey) }
+      var keyVisible by remember { mutableStateOf(false) }
+
+      AlertDialog(
+        onDismissRequest = { showApiKeyDialog = false },
+        title = {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = GenziiPurple)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Gemini API Setup", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold)
+          }
+        },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+              text = "Powered by Google Gemini 2.5 Flash. Enter your Gemini API key to activate genuine originality checking, verified academic source discovery, and literature similarity scanning.",
+              fontSize = 12.sp,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+              value = enteredKey,
+              onValueChange = { enteredKey = it },
+              label = { Text("Gemini API Key") },
+              placeholder = { Text("AIzaSy...") },
+              singleLine = true,
+              visualTransformation = if (keyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+              trailingIcon = {
+                IconButton(onClick = { keyVisible = !keyVisible }) {
+                  Icon(
+                    imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (keyVisible) "Hide key" else "Show key"
+                  )
+                }
+              },
+              modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+              text = "Keys are securely stored in your private device enclave and never sent to third parties.",
+              fontSize = 10.sp,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              GenziiRepository.updateAiSettings(
+                customKey = enteredKey.trim(),
+                temperature = userProfile.temperature,
+                useStreaming = userProfile.useStreaming
+              )
+              showApiKeyDialog = false
+              scanErrorMessage = null
+              Toast.makeText(context, "Gemini API key saved!", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+          ) {
+            Text("Save Key")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showApiKeyDialog = false }) {
+            Text("Cancel")
+          }
+        }
       )
     }
   }

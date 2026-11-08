@@ -82,15 +82,15 @@ object GeminiService {
 
     if (!isApiKeyConfigured(customApiKey)) {
       return@withContext Result.failure(
-        IllegalStateException("GEMINI_API_KEY is not configured or using placeholder.")
+        IllegalStateException("Google Gemini API key is not configured. Please configure your key in Settings or AI Studio Secrets.")
       )
     }
 
     val wordCount = textToAnalyze.split(Regex("\\s+")).filter { it.isNotBlank() }.size
 
     val prompt = """
-      You are an expert academic originality analysis and plagiarism detection engine.
-      Analyze the following document for originality, matching public sources, and similarity index.
+      You are an expert academic originality analysis and plagiarism verification engine.
+      Analyze the following document for authenticity, similarity against published literature, and originality metrics.
       
       Document Title: "$documentTitle"
       Text to analyze:
@@ -98,22 +98,29 @@ object GeminiService {
       $textToAnalyze
       \"\"\"
       
-      Respond strictly with a JSON object containing:
+      STRICT REQUIREMENTS:
+      - Never invent matching websites, fake URLs, or fabricate plagiarism percentages without evidence.
+      - If the text is genuine, original writing with no detected public plagiarism, report originalPercentage: 100, similarityPercentage: 0, matchesCount: 0, sourcesCount: 0, and an empty sources array [].
+      - Only list verifiable academic sources or public domains if genuine conceptual or verbatim similarity is identified.
+      - Provide an honest, insightful "aiAnalysis" evaluating the syntactic patterns, vocabulary sophistication, coherence, and originality profile.
+      - In "highlightedMatches", provide the text with bracketed annotations for any identified sections, or a clear excerpt summary if fully original.
+      
+      Respond strictly with a JSON object in this format:
       {
         "originalPercentage": <integer between 0 and 100>,
         "similarityPercentage": <integer between 0 and 100, such that originalPercentage + similarityPercentage == 100>,
-        "matchesCount": <integer count of matching segments>,
-        "sourcesCount": <integer count of identified public sources>,
+        "matchesCount": <integer count of matching segments, 0 if original>,
+        "sourcesCount": <integer count of identified sources, 0 if none>,
         "sources": [
           {
-            "domain": "<source domain, e.g. arxiv.org or researchgate.net>",
-            "url": "<source URL>",
+            "domain": "<source domain, e.g. arxiv.org or empty string if none>",
+            "url": "<source URL or empty string>",
             "matchPercentage": <integer percentage>,
-            "excerpt": "<excerpt from matching text or literature>"
+            "excerpt": "<excerpt from matching text or literature context>"
           }
         ],
-        "summary": "<concise 2-sentence analysis of originality and writing quality>",
-        "highlightedMatches": "<text excerpt with [MATCH X% - domain: text] annotations>"
+        "aiAnalysis": "<honest 2-3 sentence AI evaluation of originality and writing authenticity>",
+        "highlightedMatches": "<annotated excerpt or originality confirmation>"
       }
     """.trimIndent()
 
@@ -158,10 +165,13 @@ object GeminiService {
       }
 
       if (!response.isSuccessful) {
+        val errorMsg = when (response.code) {
+          429 -> "Rate limit reached (HTTP 429). Please wait a moment and try again."
+          400, 403 -> "Invalid or unauthorized Gemini API key. Please check your key in Settings."
+          else -> "Gemini API call failed with HTTP ${response.code}."
+        }
         Log.e(TAG, "Gemini API error code: ${response.code}, body: $responseString")
-        return@withContext Result.failure(
-          Exception("Gemini API call failed with code ${response.code}: $responseString")
-        )
+        return@withContext Result.failure(Exception(errorMsg))
       }
 
       val responseJson = JSONObject(responseString)
@@ -170,45 +180,51 @@ object GeminiService {
       val content = firstCandidate?.optJSONObject("content")
       val parts = content?.optJSONArray("parts")
       val firstPart = parts?.optJSONObject(0)
-      val rawText = firstPart?.optString("text") ?: "{}"
+      val rawText = firstPart?.optString("text")?.trim() ?: "{}"
 
-      // Parse inner structured JSON
-      val analysisJson = JSONObject(rawText)
-      val origPct = analysisJson.optInt("originalPercentage", 85).coerceIn(0, 100)
-      val simPct = analysisJson.optInt("similarityPercentage", 100 - origPct).coerceIn(0, 100)
-      val matches = analysisJson.optInt("matchesCount", 6).coerceAtLeast(1)
-      val sourcesCount = analysisJson.optInt("sourcesCount", 3).coerceAtLeast(1)
+      val cleanJson = if (rawText.startsWith("```")) {
+        rawText.substringAfter("\n").substringBeforeLast("```").trim()
+      } else rawText
+
+      val analysisJson = JSONObject(cleanJson)
+      val origPct = if (analysisJson.has("originalPercentage")) {
+        analysisJson.getInt("originalPercentage").coerceIn(0, 100)
+      } else 100
+      val simPct = if (analysisJson.has("similarityPercentage")) {
+        analysisJson.getInt("similarityPercentage").coerceIn(0, 100)
+      } else (100 - origPct).coerceIn(0, 100)
+      val matches = analysisJson.optInt("matchesCount", 0).coerceAtLeast(0)
+      val sourcesCount = analysisJson.optInt("sourcesCount", 0).coerceAtLeast(0)
 
       val sourcesList = mutableListOf<SourceMatch>()
       val sourcesArray = analysisJson.optJSONArray("sources")
       if (sourcesArray != null) {
         for (i in 0 until sourcesArray.length()) {
           val srcObj = sourcesArray.optJSONObject(i) ?: continue
-          sourcesList.add(
-            SourceMatch(
-              domain = srcObj.optString("domain", "scholar.google.com"),
-              url = srcObj.optString("url", "https://scholar.google.com"),
-              matchPercentage = srcObj.optInt("matchPercentage", 5),
-              excerpt = srcObj.optString("excerpt", "Matching domain literature")
+          val domain = srcObj.optString("domain", "").trim()
+          val url = srcObj.optString("url", "").trim()
+          val matchPercentage = srcObj.optInt("matchPercentage", 0).coerceIn(0, 100)
+          val excerpt = srcObj.optString("excerpt", "").trim()
+          if (domain.isNotBlank() || excerpt.isNotBlank()) {
+            sourcesList.add(
+              SourceMatch(
+                domain = domain.ifBlank { "Academic Literature Index" },
+                url = url,
+                matchPercentage = matchPercentage,
+                excerpt = excerpt
+              )
             )
-          )
+          }
         }
       }
 
-      if (sourcesList.isEmpty()) {
-        sourcesList.add(
-          SourceMatch(
-            domain = "scholar.google.com",
-            url = "https://scholar.google.com",
-            matchPercentage = simPct,
-            excerpt = "Identified conceptual alignments in academic indices."
-          )
-        )
-      }
-
+      val aiAnalysis = analysisJson.optString(
+        "aiAnalysis",
+        analysisJson.optString("summary", "Originality analysis verified by Google Gemini.")
+      )
       val highlightedContent = analysisJson.optString(
         "highlightedMatches",
-        analysisJson.optString("summary", textToAnalyze)
+        aiAnalysis.ifBlank { textToAnalyze }
       )
 
       val report = OriginalityReport(
@@ -217,11 +233,12 @@ object GeminiService {
         originalPercentage = origPct,
         similarityPercentage = simPct,
         matchesCount = matches,
-        sourcesCount = sourcesCount,
+        sourcesCount = sourcesList.size.coerceAtLeast(sourcesCount),
         wordsCount = wordCount.coerceAtLeast(1),
         scanDate = "Today, Just now (Gemini AI)",
         sources = sourcesList,
-        highlightedContent = highlightedContent
+        highlightedContent = highlightedContent,
+        aiAnalysis = aiAnalysis
       )
 
       Result.success(report)

@@ -251,66 +251,50 @@ object GenziiRepository {
   suspend fun scanOriginality(
     title: String,
     text: String
-  ): OriginalityReport {
-    val wordCount = text.split(Regex("\\s+")).filter { it.isNotBlank() }.size.coerceAtLeast(1)
+  ): Result<OriginalityReport> {
+    if (text.isBlank()) {
+      return Result.failure(IllegalArgumentException("Please provide text or upload a document to scan."))
+    }
 
-    // Attempt actual Google Gemini 2.5 Flash API call
     val profile = _userProfile.value
+    if (!com.example.network.GeminiService.isApiKeyConfigured(profile.customApiKey)) {
+      return Result.failure(
+        IllegalStateException("Google Gemini API key is not configured. Please enter your API key in Settings or AI Studio Secrets to run genuine originality checks.")
+      )
+    }
+
+    // Real Google Gemini API call
     val geminiResult = com.example.network.GeminiService.analyzeOriginality(
       documentTitle = title.ifBlank { "Document" },
       textToAnalyze = text,
       customApiKey = profile.customApiKey
     )
-    val report = if (geminiResult.isSuccess) {
-      geminiResult.getOrThrow()
-    } else {
-      // Deterministic analytical calculation based strictly on text metrics without fabricating fake third-party URLs
-      val cleanWords = text.split(Regex("[^a-zA-Z0-9]+")).filter { it.length > 3 }
-      val uniqueWordRatio = if (cleanWords.isNotEmpty()) cleanWords.toSet().size.toDouble() / cleanWords.size else 0.82
-      val origScore = (uniqueWordRatio * 100).toInt().coerceIn(65, 96)
-      val simScore = 100 - origScore
-      val matches = if (simScore > 0) (wordCount * (simScore / 100.0) * 0.1).toInt().coerceAtLeast(1) else 0
 
-      val reportId = "rep-${UUID.randomUUID().toString().take(8)}"
-      OriginalityReport(
-        id = reportId,
-        documentTitle = title.ifBlank { "Scanned_Document.txt" },
-        originalPercentage = origScore,
-        similarityPercentage = simScore,
-        matchesCount = matches,
-        sourcesCount = 1,
-        wordsCount = wordCount,
-        scanDate = "Analyzed on-device (Offline Neural Engine)",
-        sources = listOf(
-          SourceMatch(
-            domain = "Academic Corpus Reference",
-            url = "",
-            matchPercentage = simScore.coerceAtLeast(1),
-            excerpt = "Syntactic patterns and domain vocabulary cross-referenced against academic reference corpus."
-          )
-        ),
-        highlightedContent = text
-      )
-    }
-
-    _reports.update { it + (report.id to report) }
-    _userProfile.update {
-      it.copy(
-        checksCount = it.checksCount + 1,
-        checksLeft = (it.checksLeft - 1).coerceAtLeast(0)
-      )
-    }
-
-    // Also update document if matching
-    _documents.update { list ->
-      list.map {
-        if (it.name.equals(title, ignoreCase = true)) {
-          it.copy(originalityScore = report.originalPercentage)
-        } else it
+    return if (geminiResult.isSuccess) {
+      val report = geminiResult.getOrThrow()
+      _reports.update { it + (report.id to report) }
+      _userProfile.update {
+        it.copy(
+          checksCount = it.checksCount + 1,
+          checksLeft = (it.checksLeft - 1).coerceAtLeast(0)
+        )
       }
-    }
 
-    return report
+      // Also update document if matching
+      _documents.update { list ->
+        list.map {
+          if (it.name.equals(title, ignoreCase = true)) {
+            it.copy(originalityScore = report.originalPercentage)
+          } else it
+        }
+      }
+
+      Result.success(report)
+    } else {
+      // Never fabricate sample results, fake percentages, or mock sources when API fails
+      val error = geminiResult.exceptionOrNull() ?: Exception("Originality analysis failed")
+      Result.failure(error)
+    }
   }
 
   fun addImportedDocument(
