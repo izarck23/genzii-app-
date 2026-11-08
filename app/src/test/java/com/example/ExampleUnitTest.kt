@@ -24,6 +24,25 @@ class ExampleUnitTest {
   }
 
   @Test
+  fun testBatchMoveAndBatchDeleteDocuments() {
+    val d1 = GenziiRepository.addDocument(name = "Batch1.pdf", content = "C1", folder = "Personal", type = FileType.PDF)
+    val d2 = GenziiRepository.addDocument(name = "Batch2.pdf", content = "C2", folder = "Personal", type = FileType.PDF)
+    val setOfIds = setOf(d1.id, d2.id)
+
+    // Bulk move
+    GenziiRepository.moveDocumentsToFolder(setOfIds, "Thesis Drafts")
+    val moved1 = GenziiRepository.documents.value.find { it.id == d1.id }
+    val moved2 = GenziiRepository.documents.value.find { it.id == d2.id }
+    assertEquals("Thesis Drafts", moved1?.folder)
+    assertEquals("Thesis Drafts", moved2?.folder)
+
+    // Bulk delete
+    GenziiRepository.deleteDocuments(setOfIds)
+    assertNull(GenziiRepository.documents.value.find { it.id == d1.id })
+    assertNull(GenziiRepository.documents.value.find { it.id == d2.id })
+  }
+
+  @Test
   fun testOriginalityScanRequiresApiKey() = kotlinx.coroutines.runBlocking {
     GenziiRepository.updateAiSettings(customKey = "", temperature = 0.5f, useStreaming = true)
     val failureResult = GenziiRepository.scanOriginality(

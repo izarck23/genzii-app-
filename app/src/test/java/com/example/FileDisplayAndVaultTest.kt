@@ -234,14 +234,16 @@ class FileDisplayAndVaultTest {
     // 3. Long press on Alpha activates selection mode
     composeTestRule.onNodeWithTag("doc_row_${docAlpha.id}").performTouchInput { longClick() }
 
-    // 4. Verify selection mode is active
+    // 4. Verify selection mode is active and visual indicators are displayed
     composeTestRule.onNodeWithText("1 selected").assertExists()
     composeTestRule.onNodeWithTag("doc_checkbox_${docAlpha.id}").assertExists()
     composeTestRule.onNodeWithTag("doc_checkbox_${docBeta.id}").assertExists()
+    composeTestRule.onNodeWithTag("doc_selected_badge_${docAlpha.id}", useUnmergedTree = true).assertExists()
 
     // 5. Select Beta as well
     composeTestRule.onNodeWithTag("doc_row_${docBeta.id}").performClick()
     composeTestRule.onNodeWithText("2 selected").assertExists()
+    composeTestRule.onNodeWithTag("doc_selected_badge_${docBeta.id}", useUnmergedTree = true).assertExists()
 
     // 6. Deselect Beta individually
     composeTestRule.onNodeWithTag("doc_row_${docBeta.id}").performClick()
@@ -250,12 +252,19 @@ class FileDisplayAndVaultTest {
     // 7. Test Select All
     composeTestRule.onNodeWithTag("toggle_select_all_button").performClick()
     composeTestRule.onNodeWithText("2 selected").assertExists()
+    composeTestRule.onNodeWithTag("move_selected_button").assertExists()
+    composeTestRule.onNodeWithTag("delete_selected_button").assertExists()
 
     // 8. Exit selection mode via Close button
     composeTestRule.onNodeWithTag("exit_selection_button").performClick()
     composeTestRule.onNodeWithText("2 selected").assertDoesNotExist()
 
-    // 9. Verify sorting control exists and can be clicked
+    // 9. Verify toggle selection mode button enters selection mode directly
+    composeTestRule.onNodeWithTag("toggle_selection_mode_button").performClick()
+    composeTestRule.onNodeWithText("0 selected").assertExists()
+    composeTestRule.onNodeWithTag("exit_selection_button").performClick()
+
+    // 10. Verify sorting control exists and can be clicked
     composeTestRule.onNodeWithTag("sort_button").assertExists().performClick()
   }
 }

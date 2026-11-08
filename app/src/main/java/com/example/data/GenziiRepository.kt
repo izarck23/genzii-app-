@@ -220,6 +220,29 @@ object GenziiRepository {
     persistDocumentDeletion(id)
   }
 
+  fun deleteDocuments(ids: Set<String>) {
+    if (ids.isEmpty()) return
+    _documents.update { list -> list.filterNot { it.id in ids } }
+    _userProfile.update { it.copy(docsCount = (it.docsCount - ids.size).coerceAtLeast(0)) }
+    ids.forEach { persistDocumentDeletion(it) }
+  }
+
+  fun moveDocumentsToFolder(ids: Set<String>, targetFolder: String) {
+    if (ids.isEmpty() || targetFolder.isBlank()) return
+    val cleanFolder = targetFolder.trim()
+    val updatedDocs = mutableListOf<DocumentItem>()
+    _documents.update { list ->
+      list.map { doc ->
+        if (doc.id in ids) {
+          val updated = doc.copy(folder = cleanFolder, updatedAt = "Just now")
+          updatedDocs.add(updated)
+          updated
+        } else doc
+      }
+    }
+    updatedDocs.forEach { persistDocumentChange(it) }
+  }
+
   fun toggleStar(id: String) {
     var updated: DocumentItem? = null
     _documents.update { list ->

@@ -27,8 +27,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -96,6 +98,7 @@ fun VaultScreen(
   var isSelectionMode by remember { mutableStateOf(false) }
   var selectedDocIds by remember { mutableStateOf(setOf<String>()) }
   var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+  var showBatchMoveDialog by remember { mutableStateOf(false) }
 
   // Cancel multi-selection on system back press
   BackHandler(enabled = isSelectionMode) {
@@ -206,16 +209,30 @@ fun VaultScreen(
                   }
                   Toast.makeText(context, "Starred selected items", Toast.LENGTH_SHORT).show()
                 },
-                enabled = selectedDocIds.isNotEmpty()
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("star_selected_button")
               ) {
                 Icon(Icons.Default.Star, contentDescription = "Star selected", tint = Color(0xFFFFB300))
               }
 
               IconButton(
-                onClick = { showBatchDeleteConfirm = true },
-                enabled = selectedDocIds.isNotEmpty()
+                onClick = { showBatchMoveDialog = true },
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("move_selected_button")
               ) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete selected", tint = GenziiError)
+                Icon(
+                  imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                  contentDescription = "Move selected",
+                  tint = if (selectedDocIds.isNotEmpty()) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+              }
+
+              IconButton(
+                onClick = { showBatchDeleteConfirm = true },
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("delete_selected_button")
+              ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete selected", tint = if (selectedDocIds.isNotEmpty()) GenziiError else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
               }
             }
           }
@@ -227,6 +244,87 @@ fun VaultScreen(
           onNotificationsClick = onNotificationsClick,
           onProfileClick = onProfileClick
         )
+      }
+    },
+    bottomBar = {
+      AnimatedVisibility(
+        visible = isSelectionMode && selectedDocIds.isNotEmpty(),
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { it },
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { it }
+      ) {
+        Surface(
+          color = MaterialTheme.colorScheme.surface,
+          tonalElevation = 6.dp,
+          shadowElevation = 8.dp,
+          shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Surface(
+                shape = CircleShape,
+                color = GenziiPurpleContainer,
+                modifier = Modifier.size(32.dp)
+              ) {
+                Box(contentAlignment = Alignment.Center) {
+                  Text(
+                    text = "${selectedDocIds.size}",
+                    color = GenziiPurple,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                  )
+                }
+              }
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = "${selectedDocIds.size} ${if (selectedDocIds.size == 1) "item" else "items"} selected",
+                  fontFamily = PoppinsFontFamily,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 13.sp,
+                  color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                  text = "Bulk actions available",
+                  fontSize = 11.sp,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              OutlinedButton(
+                onClick = { showBatchMoveDialog = true },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.testTag("bottom_bar_move_button")
+              ) {
+                Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = null, modifier = Modifier.size(16.dp), tint = GenziiPurple)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Move", color = GenziiPurple, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+              }
+              Button(
+                onClick = { showBatchDeleteConfirm = true },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = GenziiError),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.testTag("bottom_bar_delete_button")
+              ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Delete", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+              }
+            }
+          }
+        }
       }
     },
     floatingActionButton = {
@@ -441,8 +539,42 @@ fun VaultScreen(
             )
           }
 
-          // Sorting Dropdown Button
-          Box {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Quick Multi-Selection Mode Button
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isSelectionMode) GenziiPurpleContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable {
+                  isSelectionMode = !isSelectionMode
+                  if (!isSelectionMode) selectedDocIds = emptySet()
+                }
+                .testTag("toggle_selection_mode_button")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = if (isSelectionMode) Icons.Default.CheckCircle else Icons.Outlined.CheckCircle,
+                  contentDescription = if (isSelectionMode) "Exit selection" else "Select files",
+                  tint = if (isSelectionMode) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = if (isSelectionMode) "Done" else "Select",
+                  fontFamily = PoppinsFontFamily,
+                  fontSize = 11.5.sp,
+                  fontWeight = FontWeight.Medium,
+                  color = if (isSelectionMode) GenziiPurple else MaterialTheme.colorScheme.onBackground
+                )
+              }
+            }
+
+            // Sorting Dropdown Button
+            Box {
             Surface(
               shape = RoundedCornerShape(12.dp),
               color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -521,6 +653,7 @@ fun VaultScreen(
           }
         }
       }
+    }
 
       // File Items List
       if (filteredDocuments.isEmpty()) {
@@ -698,16 +831,15 @@ fun VaultScreen(
         confirmButton = {
           Button(
             onClick = {
-              selectedDocIds.forEach { id ->
-                GenziiRepository.deleteDocument(id)
-              }
               val count = selectedDocIds.size
+              GenziiRepository.deleteDocuments(selectedDocIds)
               selectedDocIds = emptySet()
               isSelectionMode = false
               showBatchDeleteConfirm = false
               Toast.makeText(context, "Deleted $count items", Toast.LENGTH_SHORT).show()
             },
-            colors = ButtonDefaults.buttonColors(containerColor = GenziiError)
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiError),
+            modifier = Modifier.testTag("confirm_batch_delete_button")
           ) {
             Text("Delete")
           }
@@ -719,7 +851,191 @@ fun VaultScreen(
         }
       )
     }
+
+    // Batch Move Dialog
+    if (showBatchMoveDialog) {
+      val availableFolders = remember(documents) {
+        (listOf("Research Papers", "Thesis Drafts", "Assignments", "Personal") + documents.map { it.folder })
+          .distinct()
+          .filter { it.isNotBlank() }
+      }
+      BatchMoveDialog(
+        selectedCount = selectedDocIds.size,
+        availableFolders = availableFolders,
+        onDismiss = { showBatchMoveDialog = false },
+        onMoveConfirmed = { targetFolder ->
+          val count = selectedDocIds.size
+          GenziiRepository.moveDocumentsToFolder(selectedDocIds, targetFolder)
+          selectedDocIds = emptySet()
+          isSelectionMode = false
+          showBatchMoveDialog = false
+          Toast.makeText(context, "Moved $count items to $targetFolder", Toast.LENGTH_SHORT).show()
+        }
+      )
+    }
   }
+}
+
+@Composable
+fun BatchMoveDialog(
+  selectedCount: Int,
+  availableFolders: List<String>,
+  onDismiss: () -> Unit,
+  onMoveConfirmed: (targetFolder: String) -> Unit
+) {
+  var selectedFolder by remember { mutableStateOf(availableFolders.firstOrNull() ?: "Personal") }
+  var isCustomFolder by remember { mutableStateOf(false) }
+  var customFolderName by remember { mutableStateOf("") }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+          imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+          contentDescription = null,
+          tint = GenziiPurple,
+          modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+          text = "Move $selectedCount ${if (selectedCount == 1) "item" else "items"}",
+          fontFamily = PoppinsFontFamily,
+          fontWeight = FontWeight.Bold
+        )
+      }
+    },
+    text = {
+      Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          text = "Choose destination folder:",
+          fontSize = 12.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        availableFolders.forEach { folder ->
+          val isCurrent = !isCustomFolder && selectedFolder == folder
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (isCurrent) GenziiPurpleContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            border = if (isCurrent) BorderStroke(1.5.dp, GenziiPurple) else null,
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .clickable {
+                isCustomFolder = false
+                selectedFolder = folder
+              }
+              .testTag("move_folder_option_$folder")
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Default.Folder,
+                contentDescription = null,
+                tint = if (isCurrent) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Text(
+                text = folder,
+                fontFamily = PoppinsFontFamily,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 13.sp,
+                color = if (isCurrent) GenziiPurple else MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f)
+              )
+              if (isCurrent) {
+                Icon(
+                  imageVector = Icons.Default.Check,
+                  contentDescription = "Selected",
+                  tint = GenziiPurple,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+            }
+          }
+        }
+
+        // New Custom Folder option
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = if (isCustomFolder) GenziiPurpleContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+          border = if (isCustomFolder) BorderStroke(1.5.dp, GenziiPurple) else null,
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { isCustomFolder = true }
+            .testTag("move_folder_option_custom")
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(
+              imageVector = Icons.Default.CreateNewFolder,
+              contentDescription = null,
+              tint = if (isCustomFolder) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+              text = "+ New Folder...",
+              fontFamily = PoppinsFontFamily,
+              fontWeight = if (isCustomFolder) FontWeight.Bold else FontWeight.Medium,
+              fontSize = 13.sp,
+              color = if (isCustomFolder) GenziiPurple else MaterialTheme.colorScheme.onBackground,
+              modifier = Modifier.weight(1f)
+            )
+          }
+        }
+
+        if (isCustomFolder) {
+          OutlinedTextField(
+            value = customFolderName,
+            onValueChange = { customFolderName = it },
+            label = { Text("Folder Name") },
+            placeholder = { Text("e.g. Project Archive") },
+            singleLine = true,
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("custom_folder_name_input"),
+            shape = RoundedCornerShape(12.dp)
+          )
+        }
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = {
+          val destination = if (isCustomFolder) {
+            customFolderName.trim().ifBlank { "Personal" }
+          } else {
+            selectedFolder
+          }
+          onMoveConfirmed(destination)
+        },
+        colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+        modifier = Modifier.testTag("confirm_batch_move_button")
+      ) {
+        Text("Move Here")
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Cancel")
+      }
+    }
+  )
 }
 
 @Composable
@@ -914,6 +1230,28 @@ fun VaultFileRow(
                 onDeleteClick()
               },
               leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = GenziiError) }
+            )
+          }
+        }
+      } else {
+        // Visual indicator badge for selection mode
+        Surface(
+          shape = CircleShape,
+          color = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+          border = if (isSelected) null else BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+          modifier = Modifier
+            .size(24.dp)
+            .clickable { onToggleSelect() }
+            .testTag("doc_selected_badge_${doc.id}")
+        ) {
+          if (isSelected) {
+            Icon(
+              imageVector = Icons.Default.Check,
+              contentDescription = "Selected",
+              tint = GenziiWhite,
+              modifier = Modifier
+                .padding(4.dp)
+                .size(16.dp)
             )
           }
         }
@@ -1491,6 +1829,7 @@ fun VaultFolderViewScreen(
   var isSelectionMode by remember { mutableStateOf(false) }
   var selectedDocIds by remember { mutableStateOf(setOf<String>()) }
   var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+  var showBatchMoveDialog by remember { mutableStateOf(false) }
 
   // Cancel multi-selection on system back press
   BackHandler(enabled = isSelectionMode) {
@@ -1600,16 +1939,30 @@ fun VaultFolderViewScreen(
                   }
                   Toast.makeText(context, "Starred selected items", Toast.LENGTH_SHORT).show()
                 },
-                enabled = selectedDocIds.isNotEmpty()
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("folder_star_selected_button")
               ) {
                 Icon(Icons.Default.Star, contentDescription = "Star selected", tint = Color(0xFFFFB300))
               }
 
               IconButton(
-                onClick = { showBatchDeleteConfirm = true },
-                enabled = selectedDocIds.isNotEmpty()
+                onClick = { showBatchMoveDialog = true },
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("folder_move_selected_button")
               ) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete selected", tint = GenziiError)
+                Icon(
+                  imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                  contentDescription = "Move selected",
+                  tint = if (selectedDocIds.isNotEmpty()) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+              }
+
+              IconButton(
+                onClick = { showBatchDeleteConfirm = true },
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("folder_delete_selected_button")
+              ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete selected", tint = if (selectedDocIds.isNotEmpty()) GenziiError else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
               }
             }
           }
@@ -1830,16 +2183,15 @@ fun VaultFolderViewScreen(
         confirmButton = {
           Button(
             onClick = {
-              selectedDocIds.forEach { id ->
-                GenziiRepository.deleteDocument(id)
-              }
               val count = selectedDocIds.size
+              GenziiRepository.deleteDocuments(selectedDocIds)
               selectedDocIds = emptySet()
               isSelectionMode = false
               showBatchDeleteConfirm = false
               Toast.makeText(context, "Deleted $count items", Toast.LENGTH_SHORT).show()
             },
-            colors = ButtonDefaults.buttonColors(containerColor = GenziiError)
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiError),
+            modifier = Modifier.testTag("confirm_folder_batch_delete_button")
           ) {
             Text("Delete")
           }
@@ -1848,6 +2200,27 @@ fun VaultFolderViewScreen(
           TextButton(onClick = { showBatchDeleteConfirm = false }) {
             Text("Cancel")
           }
+        }
+      )
+    }
+
+    if (showBatchMoveDialog) {
+      val availableFolders = remember(documents) {
+        (listOf("Research Papers", "Thesis Drafts", "Assignments", "Personal") + documents.map { it.folder })
+          .distinct()
+          .filter { it.isNotBlank() && !it.equals(folderName, ignoreCase = true) }
+      }
+      BatchMoveDialog(
+        selectedCount = selectedDocIds.size,
+        availableFolders = availableFolders,
+        onDismiss = { showBatchMoveDialog = false },
+        onMoveConfirmed = { targetFolder ->
+          val count = selectedDocIds.size
+          GenziiRepository.moveDocumentsToFolder(selectedDocIds, targetFolder)
+          selectedDocIds = emptySet()
+          isSelectionMode = false
+          showBatchMoveDialog = false
+          Toast.makeText(context, "Moved $count items to $targetFolder", Toast.LENGTH_SHORT).show()
         }
       )
     }
