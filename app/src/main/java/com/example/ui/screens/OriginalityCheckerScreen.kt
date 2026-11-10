@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,12 +37,17 @@ import com.example.ads.GoogleTestInterstitialAdDialog
 import com.example.ads.GoogleTestRewardedAdDialog
 import com.example.data.GenziiRepository
 import com.example.model.OriginalityReport
+import com.example.model.PremiumFeature
 import com.example.model.SourceMatch
+import com.example.model.SubscriptionTier
 import com.example.network.GeminiService
 import com.example.ui.components.OriginalityGauge
 import com.example.ui.theme.*
 import com.example.util.FileUtils
 import com.example.util.PdfExportManager
+import com.example.util.UrlSecurityValidator
+import com.example.util.UrlValidationResult
+import androidx.compose.ui.platform.LocalClipboardManager
 import android.widget.Toast
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -49,7 +55,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun OriginalityCheckerScreen(
   initialReportId: String? = null,
-  onNavigateToVault: () -> Unit
+  onNavigateToVault: () -> Unit,
+  onNavigateToPremium: () -> Unit = {}
 ) {
   val context = LocalContext.current
   val reports by GenziiRepository.reports.collectAsState()
@@ -71,6 +78,12 @@ fun OriginalityCheckerScreen(
   val isGeminiLive = remember(userProfile.customApiKey) { GeminiService.isApiKeyConfigured(userProfile.customApiKey) }
   var scanErrorMessage by remember { mutableStateOf<String?>(null) }
   var showApiKeyDialog by remember { mutableStateOf(false) }
+  val clipboardManager = LocalClipboardManager.current
+  var urlInput by remember { mutableStateOf("") }
+  var urlValidation by remember { mutableStateOf<UrlValidationResult?>(null) }
+  var isCheckingUrl by remember { mutableStateOf(false) }
+  var urlVerificationMessage by remember { mutableStateOf<String?>(null) }
+  var showUpgradeDialogForFeature by remember { mutableStateOf<PremiumFeature?>(null) }
 
   val coroutineScope = rememberCoroutineScope()
 
@@ -184,7 +197,84 @@ fun OriginalityCheckerScreen(
           .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
-        // Tab switcher: Text | Document
+        // Premium Upgrade Banner for Free Tier Users
+        if (userProfile.tier == SubscriptionTier.FREE) {
+          Card(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable { onNavigateToPremium() }
+              .testTag("originality_premium_banner"),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = GenziiPurple)
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+              Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Icon(
+                    imageVector = Icons.Filled.WorkspacePremium,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                  )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                  Text(
+                    text = "Upgrade to Genzii Premium",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color.White
+                  )
+                  Text(
+                    text = "Unlock URL Checker, deep literature search & 100 scans",
+                    fontFamily = PoppinsFontFamily,
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
+                }
+              }
+
+              Button(
+                onClick = onNavigateToPremium,
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = Color.White,
+                  contentColor = GenziiPurple
+                ),
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+              ) {
+                Text(
+                  text = "Upgrade",
+                  fontFamily = PoppinsFontFamily,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.5.sp
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // Tab switcher: Text | Document | Website URL [PRO]
         Row(
           modifier = Modifier
             .fillMaxWidth()
@@ -203,6 +293,17 @@ fun OriginalityCheckerScreen(
             isSelected = selectedTab == 1,
             onClick = { selectedTab = 1 },
             modifier = Modifier.weight(1f)
+          )
+          TabButton(
+            text = "URL [PRO]",
+            isSelected = selectedTab == 2,
+            onClick = {
+              selectedTab = 2
+              if (userProfile.tier == SubscriptionTier.FREE) {
+                showUpgradeDialogForFeature = PremiumFeature.URL_CHECKER
+              }
+            },
+            modifier = Modifier.weight(1.1f)
           )
         }
 
@@ -260,7 +361,7 @@ fun OriginalityCheckerScreen(
               }
             }
           }
-        } else {
+        } else if (selectedTab == 1) {
           // Document Upload Tab
           Card(
             shape = RoundedCornerShape(18.dp),
@@ -362,7 +463,286 @@ fun OriginalityCheckerScreen(
               }
             }
           }
+        } else {
+          // URL Checker Tab (selectedTab == 2)
+          Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("url_checker_card")
+          ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Box(
+                    modifier = Modifier
+                      .size(38.dp)
+                      .clip(CircleShape)
+                      .background(GenziiPurpleContainer),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.Link,
+                      contentDescription = null,
+                      tint = GenziiPurple,
+                      modifier = Modifier.size(20.dp)
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Column {
+                    Text(
+                      text = "URL Originality Checker",
+                      fontFamily = PoppinsFontFamily,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 14.5.sp,
+                      color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                      text = "Inspect public articles & verify matching web sources",
+                      fontFamily = PoppinsFontFamily,
+                      fontSize = 11.sp,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                  }
+                }
+
+                Surface(
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (userProfile.tier != SubscriptionTier.FREE) Color(0xFFDCFCE7) else GenziiPurpleContainer
+                ) {
+                  Text(
+                    text = if (userProfile.tier != SubscriptionTier.FREE) "UNLOCKED" else "PLUS / PRO",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    color = if (userProfile.tier != SubscriptionTier.FREE) Color(0xFF166534) else GenziiPurple,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                  )
+                }
+              }
+
+              Spacer(modifier = Modifier.height(14.dp))
+
+              OutlinedTextField(
+                value = urlInput,
+                onValueChange = {
+                  urlInput = it
+                  urlVerificationMessage = null
+                  urlValidation = if (it.isNotBlank()) UrlSecurityValidator.validateUrl(it) else null
+                },
+                label = { Text("Website or Article URL") },
+                placeholder = { Text("https://example.com/research-paper") },
+                leadingIcon = {
+                  Icon(Icons.Default.Language, contentDescription = null, tint = GenziiPurple)
+                },
+                trailingIcon = {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (urlInput.isNotBlank()) {
+                      IconButton(onClick = {
+                        urlInput = ""
+                        urlValidation = null
+                        urlVerificationMessage = null
+                      }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear URL", modifier = Modifier.size(18.dp))
+                      }
+                    }
+                    IconButton(onClick = {
+                      val clip = clipboardManager.getText()?.text?.trim() ?: ""
+                      if (clip.isNotBlank()) {
+                        urlInput = clip
+                        urlValidation = UrlSecurityValidator.validateUrl(clip)
+                      }
+                    }) {
+                      Icon(Icons.Default.ContentPaste, contentDescription = "Paste URL", tint = GenziiPurple, modifier = Modifier.size(18.dp))
+                    }
+                  }
+                },
+                singleLine = true,
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("url_checker_input"),
+                shape = RoundedCornerShape(14.dp)
+              )
+
+              Spacer(modifier = Modifier.height(10.dp))
+
+              // Security & Validation Status Badge
+              when (val valid = urlValidation) {
+                is UrlValidationResult.Valid -> {
+                  Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                  ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                          imageVector = Icons.Default.CheckCircle,
+                          contentDescription = null,
+                          tint = Color(0xFF16A34A),
+                          modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                          text = "Public Domain Verified: ${valid.host}",
+                          fontFamily = PoppinsFontFamily,
+                          fontWeight = FontWeight.SemiBold,
+                          fontSize = 12.sp,
+                          color = Color(0xFF166534)
+                        )
+                      }
+                      Spacer(modifier = Modifier.height(4.dp))
+                      Text(
+                        text = if (valid.isHttps) "• Protocol: HTTPS Encrypted\n• SSRF Protection: Private, internal, & loopback addresses excluded"
+                               else "• Protocol: HTTP (Insecure unencrypted)\n• SSRF Protection: Verified non-private public routing",
+                        fontFamily = PoppinsFontFamily,
+                        fontSize = 11.sp,
+                        color = Color(0xFF15803D),
+                        lineHeight = 15.sp
+                      )
+                    }
+                  }
+                }
+                is UrlValidationResult.Invalid -> {
+                  Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                  ) {
+                    Row(
+                      modifier = Modifier.padding(12.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                      )
+                      Spacer(modifier = Modifier.width(8.dp))
+                      Text(
+                        text = valid.reason,
+                        fontFamily = PoppinsFontFamily,
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        lineHeight = 16.sp
+                      )
+                    }
+                  }
+                }
+                null -> {
+                  Text(
+                    text = "Security filter: Only publicly routable HTTP/HTTPS URLs are permitted. Internal network IPs (10.*, 192.168.*, 127.*, localhost) are blocked.",
+                    fontFamily = PoppinsFontFamily,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                  )
+                }
+              }
+
+              Spacer(modifier = Modifier.height(14.dp))
+
+              // Entitlement / Action Button
+              if (userProfile.tier == SubscriptionTier.FREE) {
+                Card(
+                  modifier = Modifier.fillMaxWidth(),
+                  shape = RoundedCornerShape(14.dp),
+                  colors = CardDefaults.cardColors(containerColor = GenziiPurpleContainer.copy(alpha = 0.5f))
+                ) {
+                  Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Icon(
+                        imageVector = Icons.Filled.Lock,
+                        contentDescription = null,
+                        tint = GenziiPurple,
+                        modifier = Modifier.size(16.dp)
+                      )
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text(
+                        text = "Plus & Pro Feature",
+                        fontFamily = PoppinsFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp,
+                        color = GenziiPurple
+                      )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                      text = "URL Originality Checking extracts text from published research, online blogs, and news sources to test for duplicate passages.",
+                      fontFamily = PoppinsFontFamily,
+                      fontSize = 11.5.sp,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      lineHeight = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                      onClick = { onNavigateToPremium() },
+                      colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+                      shape = RoundedCornerShape(12.dp),
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                    ) {
+                      Icon(Icons.Filled.WorkspacePremium, contentDescription = null, modifier = Modifier.size(16.dp))
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text("Upgrade to Plus ($4.99/mo)", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                  }
+                }
+              } else {
+                Button(
+                  onClick = {
+                    val validation = UrlSecurityValidator.validateUrl(urlInput)
+                    if (validation is UrlValidationResult.Valid) {
+                      urlVerificationMessage = "✓ URL security validation passed (${validation.host}). Target endpoint is public and ready for academic content extraction in Phase 2."
+                    } else if (validation is UrlValidationResult.Invalid) {
+                      urlVerificationMessage = "⚠️ URL validation error: ${validation.reason}"
+                    }
+                  },
+                  enabled = urlInput.isNotBlank() && urlValidation is UrlValidationResult.Valid,
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("verify_url_button"),
+                  colors = ButtonDefaults.buttonColors(
+                    containerColor = GenziiPurple,
+                    contentColor = Color.White
+                  ),
+                  shape = RoundedCornerShape(14.dp)
+                ) {
+                  Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = "Verify URL Originality",
+                    fontFamily = PoppinsFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                  )
+                }
+
+                if (urlVerificationMessage != null) {
+                  Spacer(modifier = Modifier.height(10.dp))
+                  Text(
+                    text = urlVerificationMessage!!,
+                    fontFamily = PoppinsFontFamily,
+                    fontSize = 12.sp,
+                    color = if (urlVerificationMessage!!.startsWith("✓")) Color(0xFF166534) else MaterialTheme.colorScheme.error,
+                    lineHeight = 16.sp
+                  )
+                }
+              }
+            }
+          }
         }
+
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -549,55 +929,58 @@ fun OriginalityCheckerScreen(
             }
           }
 
-          Button(
-            onClick = {
-              if (textInput.isNotBlank()) {
-                scanErrorMessage = null
-                if (!isGeminiLive) {
-                  scanErrorMessage = "Google Gemini API key is required to perform real-time originality and plagiarism analysis. Please enter your API key to proceed."
-                  showApiKeyDialog = true
-                  return@Button
-                }
-                isScanning = true
-                coroutineScope.launch {
-                  val result = GenziiRepository.scanOriginality(
-                    title = documentTitle.ifBlank { "Scanned_Text.txt" },
-                    text = textInput
-                  )
-                  isScanning = false
-                  if (result.isSuccess) {
-                    activeReport = result.getOrThrow()
-                    scanErrorMessage = null
-                    showInterstitialAdDialog = true
-                  } else {
-                    val ex = result.exceptionOrNull()
-                    scanErrorMessage = ex?.message ?: "Analysis could not be completed. Please check your network connection and API key."
+          if (selectedTab != 2) {
+            Button(
+              onClick = {
+                if (textInput.isNotBlank()) {
+                  scanErrorMessage = null
+                  if (!isGeminiLive) {
+                    scanErrorMessage = "Google Gemini API key is required to perform real-time originality and plagiarism analysis. Please enter your API key to proceed."
+                    showApiKeyDialog = true
+                    return@Button
+                  }
+                  isScanning = true
+                  coroutineScope.launch {
+                    val result = GenziiRepository.scanOriginality(
+                      title = documentTitle.ifBlank { "Scanned_Text.txt" },
+                      text = textInput
+                    )
+                    isScanning = false
+                    if (result.isSuccess) {
+                      activeReport = result.getOrThrow()
+                      scanErrorMessage = null
+                      showInterstitialAdDialog = true
+                    } else {
+                      val ex = result.exceptionOrNull()
+                      scanErrorMessage = ex?.message ?: "Analysis could not be completed. Please check your network connection and API key."
+                    }
                   }
                 }
-              }
-            },
-            enabled = textInput.isNotBlank(),
-            modifier = Modifier
-              .fillMaxWidth()
-              .height(54.dp)
-              .testTag("start_originality_scan_button"),
-            colors = ButtonDefaults.buttonColors(
-              containerColor = GenziiPurple,
-              contentColor = GenziiWhite
-            ),
-            shape = RoundedCornerShape(16.dp)
-          ) {
-            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = if (textInput.isBlank()) "Enter Text to Scan" else "Scan",
-              fontFamily = PoppinsFontFamily,
-              fontWeight = FontWeight.Bold,
-              fontSize = 16.sp
-            )
+              },
+              enabled = textInput.isNotBlank(),
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .testTag("start_originality_scan_button"),
+              colors = ButtonDefaults.buttonColors(
+                containerColor = GenziiPurple,
+                contentColor = GenziiWhite
+              ),
+              shape = RoundedCornerShape(16.dp)
+            ) {
+              Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = if (textInput.isBlank()) "Enter Text to Scan" else "Scan",
+                fontFamily = PoppinsFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+              )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
           }
 
-          Spacer(modifier = Modifier.height(14.dp))
 
           OutlinedButton(
             onClick = { showRewardedAdDialog = true },
@@ -1053,8 +1436,17 @@ fun OriginalityCheckerScreen(
         }
       )
     }
+
+    if (showUpgradeDialogForFeature != null) {
+      PremiumUpgradeDialog(
+        feature = showUpgradeDialogForFeature!!,
+        onDismiss = { showUpgradeDialogForFeature = null },
+        onNavigateToUpgrade = onNavigateToPremium
+      )
+    }
   }
 }
+
 
 @Composable
 fun TabButton(

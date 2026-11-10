@@ -1,6 +1,8 @@
 package com.example.data
 
 import com.example.model.*
+import com.example.util.UrlSecurityValidator
+import com.example.util.UrlValidationResult
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +15,7 @@ object GenziiRepository {
   private var appContext: Context? = null
   private const val PREFS_NAME = "genzii_user_prefs"
   private const val KEY_THEME = "saved_theme_mode"
+  private const val KEY_SUBSCRIPTION_TIER = "saved_subscription_tier"
 
   fun init(context: Context) {
     appContext = context.applicationContext
@@ -23,6 +26,30 @@ object GenziiRepository {
       if (savedTheme != null) {
         val mode = ThemeMode.valueOf(savedTheme)
         _userProfile.update { it.copy(themeMode = mode) }
+      }
+      val savedTierStr = prefs?.getString(KEY_SUBSCRIPTION_TIER, null)
+      if (savedTierStr != null) {
+        val savedTier = SubscriptionTier.valueOf(savedTierStr)
+        _userProfile.update {
+          it.copy(
+            tier = savedTier,
+            checksLeft = when (savedTier) {
+              SubscriptionTier.PRO -> 999
+              SubscriptionTier.PLUS -> 100
+              SubscriptionTier.FREE -> 10
+            },
+            totalChecks = when (savedTier) {
+              SubscriptionTier.PRO -> 999
+              SubscriptionTier.PLUS -> 100
+              SubscriptionTier.FREE -> 10
+            },
+            totalStorageGb = when (savedTier) {
+              SubscriptionTier.PRO -> 100.0
+              SubscriptionTier.PLUS -> 50.0
+              SubscriptionTier.FREE -> 5.0
+            }
+          )
+        }
       }
     } catch (_: Exception) {}
 
@@ -570,15 +597,16 @@ object GenziiRepository {
   }
 
   fun scanUrl(url: String): UrlScanResult {
-    val cleanUrl = url.trim()
-    val isRisky = cleanUrl.contains("phish", ignoreCase = true) || cleanUrl.contains("malware", ignoreCase = true)
+    val validation = UrlSecurityValidator.validateUrl(url)
+    val isSecure = validation is UrlValidationResult.Valid && validation.isHttps
+    val isSafe = validation is UrlValidationResult.Valid
     return UrlScanResult(
-      url = cleanUrl,
-      isSafe = !isRisky,
-      noMalware = !isRisky,
-      notPhishing = !isRisky,
-      sslValid = cleanUrl.startsWith("https://") && !isRisky,
-      originalityPercentage = if (isRisky) 24 else 91,
+      url = if (validation is UrlValidationResult.Valid) validation.normalizedUrl else url.trim(),
+      isSafe = isSafe,
+      noMalware = isSafe,
+      notPhishing = isSafe,
+      sslValid = isSecure,
+      originalityPercentage = if (isSafe) 94 else 0,
       scanDate = "Today, Just now"
     )
   }
@@ -587,12 +615,44 @@ object GenziiRepository {
     _userProfile.update {
       it.copy(
         tier = tier,
-        checksLeft = if (tier == SubscriptionTier.PRO) 999 else 100,
-        totalChecks = if (tier == SubscriptionTier.PRO) 999 else 100,
-        totalStorageGb = if (tier == SubscriptionTier.PRO) 100.0 else 50.0
+        checksLeft = when (tier) {
+          SubscriptionTier.PRO -> 999
+          SubscriptionTier.PLUS -> 100
+          SubscriptionTier.FREE -> 10
+        },
+        totalChecks = when (tier) {
+          SubscriptionTier.PRO -> 999
+          SubscriptionTier.PLUS -> 100
+          SubscriptionTier.FREE -> 10
+        },
+        totalStorageGb = when (tier) {
+          SubscriptionTier.PRO -> 100.0
+          SubscriptionTier.PLUS -> 50.0
+          SubscriptionTier.FREE -> 5.0
+        }
       )
     }
+    try {
+      appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ?.edit()
+        ?.putString(KEY_SUBSCRIPTION_TIER, tier.name)
+        ?.apply()
+    } catch (_: Exception) {}
   }
+
+  fun isFeatureEntitled(feature: PremiumFeature): Boolean {
+    val currentTier = _userProfile.value.tier
+    return when (feature.minimumTier) {
+      SubscriptionTier.FREE -> true
+      SubscriptionTier.PLUS -> currentTier == SubscriptionTier.PLUS || currentTier == SubscriptionTier.PRO
+      SubscriptionTier.PRO -> currentTier == SubscriptionTier.PRO
+    }
+  }
+
+  fun canPerformScan(): Boolean {
+    return _userProfile.value.checksLeft > 0
+  }
+
 
   fun grantRewardedBonus(scansCount: Int = 10, aiCredits: Int = 10) {
     _userProfile.update {

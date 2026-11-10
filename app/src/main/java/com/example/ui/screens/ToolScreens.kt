@@ -1013,10 +1013,10 @@ fun UrlCheckerScreen(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            SafetyCheckRow("No malware detected", result.noMalware)
-            SafetyCheckRow("Not a phishing site", result.notPhishing)
-            SafetyCheckRow("SSL certificate valid", result.sslValid)
-            SafetyCheckRow("Originality index rating (${result.originalityPercentage}%)", true)
+            SafetyCheckRow("Public domain routing verified", result.isSafe)
+            SafetyCheckRow("SSRF protection (private IPs blocked)", result.isSafe)
+            SafetyCheckRow("SSL/TLS secure connection", result.sslValid)
+            SafetyCheckRow("Originality interface verified", result.isSafe)
           }
         }
       }

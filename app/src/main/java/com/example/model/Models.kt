@@ -135,6 +135,99 @@ enum class SubscriptionTier {
   FREE, PLUS, PRO
 }
 
+enum class PremiumFeature(
+  val displayName: String,
+  val description: String,
+  val minimumTier: SubscriptionTier,
+  val tag: String
+) {
+  URL_CHECKER(
+    "URL Originality Checker",
+    "Extract publicly accessible web articles and verify matching literature against indexed academic sources.",
+    SubscriptionTier.PLUS,
+    "PLUS"
+  ),
+  ADVANCED_PLAGIARISM(
+    "Advanced Plagiarism Detection",
+    "Identify exact phrase matches, paraphrased sentences, and syntactic similarities with verifiable source links.",
+    SubscriptionTier.PLUS,
+    "PLUS"
+  ),
+  GEMINI_AI_ANALYSIS(
+    "Gemini AI Content Analysis",
+    "Deep neural analysis of AI-generated indicators, stylistic probability, and contextual reasoning.",
+    SubscriptionTier.PLUS,
+    "PLUS"
+  ),
+  MULTI_FILE_SCANNING(
+    "Multiple File Scanning",
+    "Batch scan PDF, DOCX, and TXT research documents simultaneously with unified cross-document matching.",
+    SubscriptionTier.PRO,
+    "PRO"
+  ),
+  DETAILED_PDF_REPORTS(
+    "Detailed Evidence Reports",
+    "Generate downloadable, tamper-evident PDF certificates with side-by-side highlighted source matches.",
+    SubscriptionTier.PLUS,
+    "PLUS"
+  ),
+  CITATION_CHECKER(
+    "Citation & Bibliography Checker",
+    "Verify citation completeness and accuracy across APA, MLA, Harvard, and Chicago formatting standards.",
+    SubscriptionTier.PRO,
+    "PRO"
+  ),
+  SMART_REWRITE(
+    "Smart Rewrite Assistant",
+    "Improve flagged or weak passages with academically rigorous phrasing while preserving original thesis.",
+    SubscriptionTier.PLUS,
+    "PLUS"
+  ),
+  DOCUMENT_COMPARISON(
+    "Document Comparison",
+    "Side-by-side comparative diff to highlight verbatim overlap and modified sections between two revisions.",
+    SubscriptionTier.PRO,
+    "PRO"
+  ),
+  SCAN_HISTORY(
+    "Originality Scan History",
+    "Store, filter, and reopen past originality certificates and evidence reports anytime in your private enclave.",
+    SubscriptionTier.FREE,
+    "FREE"
+  ),
+  PREMIUM_USAGE_LIMITS(
+    "Premium Usage Management",
+    "Up to 999 monthly originality checks, extended file sizes, and 100 GB encrypted Vault cloud enclave.",
+    SubscriptionTier.PLUS,
+    "PLUS"
+  );
+
+  val isPremiumOnly: Boolean
+    get() = minimumTier != SubscriptionTier.FREE
+}
+
+data class PlanComparisonItem(
+  val title: String,
+  val free: String,
+  val plus: String,
+  val pro: String,
+  val isHighlighted: Boolean = false
+)
+
+val GenziiPlanComparisons = listOf(
+  PlanComparisonItem("Originality Checks", "10 / month", "100 / month", "999 / month", true),
+  PlanComparisonItem("Input Methods", "Text & 1 Doc", "Text, Doc & URL", "Text, Multi-Doc, URL & Batch"),
+  PlanComparisonItem("Encrypted Vault Storage", "5.0 GB", "50.0 GB", "100.0 GB"),
+  PlanComparisonItem("Plagiarism Source Matching", "Basic", "Advanced Web & Academic", "Full Web, Journal & Deep Index", true),
+  PlanComparisonItem("Gemini AI Writing Analysis", "Basic Summary", "Full Explanations & Evidence", "Deep Probabilistic Diagnostics"),
+  PlanComparisonItem("Detailed PDF Reports", "Standard Export", "Certified PDF with Evidence", "Certified Institutional Dossier"),
+  PlanComparisonItem("Citation Verification", "—", "APA / MLA Basic", "APA, MLA, Harvard & Chicago", true),
+  PlanComparisonItem("Smart Rewrite Assistant", "—", "Included", "Priority Academic Assistant"),
+  PlanComparisonItem("Document Comparison Diff", "—", "—", "Included (Side-by-Side)"),
+  PlanComparisonItem("Processing Speed & Queue", "Standard", "Fast-lane", "Instant Priority Cloud")
+)
+
+
 data class UserProfile(
   val name: String = "Scholar",
   val email: String = "",

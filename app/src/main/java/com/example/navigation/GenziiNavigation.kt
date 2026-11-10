@@ -66,7 +66,9 @@ sealed class Screen(val route: String) {
   object Appearance : Screen("appearance")
   object PrivacySecurity : Screen("privacy_security")
   object Notifications : Screen("notifications")
+  object Premium : Screen("premium")
 }
+
 
 data class BottomNavItem(
   val label: String,
@@ -368,7 +370,7 @@ fun GenziiNavGraph(
           navController.navigate(Screen.SecureVault.route)
         },
         onNavigateToUpgrade = {
-          navController.navigate(Screen.Profile.route)
+          navController.navigate(Screen.Premium.route)
         },
         onNavigateToTools = {
           navController.navigate(Screen.PdfTools.route)
@@ -400,6 +402,9 @@ fun GenziiNavGraph(
       OriginalityCheckerScreen(
         onNavigateToVault = {
           navController.navigate(Screen.SecureVault.route)
+        },
+        onNavigateToPremium = {
+          navController.navigate(Screen.Premium.route)
         }
       )
     }
@@ -532,5 +537,10 @@ fun GenziiNavGraph(
     composable(Screen.Notifications.route) {
       NotificationsScreen(onBack = { navController.popBackStack() })
     }
+
+    composable(Screen.Premium.route) {
+      PremiumScreen(onBack = { navController.popBackStack() })
+    }
   }
 }
+
