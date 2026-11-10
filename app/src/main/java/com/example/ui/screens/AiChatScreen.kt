@@ -663,7 +663,7 @@ fun AiChatScreen(
                     Icon(Icons.Outlined.Description, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                      Text(doc.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                      Text(doc.displayName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                       Text("${doc.folder} • ${doc.sizeFormatted}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                   }

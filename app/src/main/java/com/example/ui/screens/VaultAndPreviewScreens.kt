@@ -333,9 +333,12 @@ fun VaultScreen(
         containerColor = GenziiPurple,
         contentColor = GenziiWhite,
         shape = CircleShape,
-        modifier = Modifier.testTag("vault_fab_add_file")
+        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp),
+        modifier = Modifier
+          .padding(bottom = 8.dp, end = 4.dp)
+          .testTag("vault_fab_add_file")
       ) {
-        Icon(Icons.Default.Add, contentDescription = "Add Document")
+        Icon(Icons.Default.Add, contentDescription = "Add Document", modifier = Modifier.size(24.dp))
       }
     },
     containerColor = MaterialTheme.colorScheme.background
@@ -418,6 +421,7 @@ fun VaultScreen(
 
           LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(end = 12.dp),
             modifier = Modifier.fillMaxWidth()
           ) {
             items(GenziiRepository.folders) { (folderName, count) ->
@@ -431,88 +435,136 @@ fun VaultScreen(
         }
       }
 
-      // Storage Usage Bar Card
-      // Device Enclave Storage Usage Card
+      // Encrypted Device Enclave Storage Usage Card
       item {
-        val totalSpaceGb = remember {
+        val (deviceFreeGb, deviceTotalGb) = remember {
           try {
             val stat = android.os.StatFs(context.filesDir.absolutePath)
-            val available = (stat.availableBlocksLong * stat.blockSizeLong) / (1024.0 * 1024.0 * 1024.0)
+            val free = (stat.availableBlocksLong * stat.blockSizeLong) / (1024.0 * 1024.0 * 1024.0)
             val total = (stat.blockCountLong * stat.blockSizeLong) / (1024.0 * 1024.0 * 1024.0)
-            String.format("%.1f", available) to String.format("%.1f", total)
+            String.format("%.1f", free) to String.format("%.1f", total)
           } catch (_: Exception) {
-            "4.8" to "32.0"
+            "28.1" to "111.4"
           }
         }
-        val vaultUsageMb = remember(documents) {
+        val (vaultUsedBytes, vaultFormatted) = remember(documents) {
           try {
             val vaultDir = File(context.filesDir, "vault_documents")
-            val size = vaultDir.listFiles()?.sumOf { it.length() } ?: 0L
-            if (size > 1024 * 1024) "${String.format("%.1f", size / (1024.0 * 1024.0))} MB"
-            else "${(size / 1024).coerceAtLeast(12)} KB"
+            val diskSize = if (vaultDir.exists()) vaultDir.listFiles()?.sumOf { it.length() } ?: 0L else 0L
+            val docBytes = documents.sumOf { doc ->
+              doc.localFilePath?.let { File(it).takeIf { f -> f.exists() }?.length() } ?: 0L
+            }
+            val totalBytes = maxOf(diskSize, docBytes)
+            val formatted = com.example.util.FileUtils.formatFileSize(totalBytes)
+            totalBytes to formatted
           } catch (_: Exception) {
-            "34 KB"
+            0L to "0 B"
           }
         }
+        val vaultQuotaBytes = (userProfile.totalStorageGb * 1024.0 * 1024.0 * 1024.0).toLong()
+        val vaultRatio = if (vaultQuotaBytes > 0L) {
+          (vaultUsedBytes.toFloat() / vaultQuotaBytes.toFloat()).coerceIn(0f, 1.0f)
+        } else 0f
+        val displayProgress = if (vaultUsedBytes > 0L) maxOf(0.02f, vaultRatio) else 0f
 
         Card(
           shape = RoundedCornerShape(16.dp),
           colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-          elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+          border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+          elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
           modifier = Modifier.fillMaxWidth()
         ) {
-          Column(modifier = Modifier.padding(14.dp)) {
+          Column(modifier = Modifier.padding(16.dp)) {
             Row(
               modifier = Modifier.fillMaxWidth(),
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically
             ) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                  imageVector = Icons.Default.Shield,
-                  contentDescription = null,
-                  tint = GenziiPurple,
-                  modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+              ) {
+                Surface(
+                  shape = RoundedCornerShape(10.dp),
+                  color = GenziiPurpleContainer,
+                  modifier = Modifier.size(36.dp)
+                ) {
+                  Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                      imageVector = Icons.Default.Shield,
+                      contentDescription = "Encrypted Vault",
+                      tint = GenziiPurple,
+                      modifier = Modifier.size(20.dp)
+                    )
+                  }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
                 Column {
                   Text(
                     text = "Encrypted Device Enclave",
                     fontFamily = PoppinsFontFamily,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
+                    fontSize = 13.5.sp,
                     color = MaterialTheme.colorScheme.onBackground
                   )
                   Text(
                     text = "Zero-knowledge local storage • Private to device",
-                    fontSize = 10.sp,
+                    fontFamily = PoppinsFontFamily,
+                    fontSize = 10.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                   )
                 }
               }
-              Text(
-                text = "$vaultUsageMb used",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = GenziiPurple
-              )
+
+              Column(horizontalAlignment = Alignment.End) {
+                Text(
+                  text = "$vaultFormatted used",
+                  fontFamily = PoppinsFontFamily,
+                  fontSize = 12.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = GenziiPurple
+                )
+                Text(
+                  text = "of ${userProfile.totalStorageGb.toInt()} GB plan",
+                  fontFamily = PoppinsFontFamily,
+                  fontSize = 10.sp,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             LinearProgressIndicator(
-              progress = { 0.05f },
+              progress = { displayProgress },
               modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp)),
               color = GenziiPurple,
-              trackColor = MaterialTheme.colorScheme.surfaceVariant
+              trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-              text = "${totalSpaceGb.first} GB available on device (${totalSpaceGb.second} GB total)",
-              fontSize = 10.sp,
-              color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+              Text(
+                text = "Genzii Vault: $vaultFormatted",
+                fontFamily = PoppinsFontFamily,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+              Text(
+                text = "$deviceFreeGb GB free on device ($deviceTotalGb GB total)",
+                fontFamily = PoppinsFontFamily,
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+              )
+            }
           }
         }
       }
@@ -709,7 +761,7 @@ fun VaultScreen(
       }
 
       item {
-        Spacer(modifier = Modifier.height(60.dp))
+        Spacer(modifier = Modifier.height(110.dp))
       }
     }
 
@@ -1063,11 +1115,12 @@ fun FolderCard(
 
   Card(
     modifier = Modifier
-      .width(135.dp)
+      .width(148.dp)
       .clip(RoundedCornerShape(16.dp))
       .clickable(onClick = onClick),
     shape = RoundedCornerShape(16.dp),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {
     Column(modifier = Modifier.padding(14.dp)) {
@@ -1090,7 +1143,7 @@ fun FolderCard(
         text = name,
         fontFamily = PoppinsFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
+        fontSize = 12.5.sp,
         color = MaterialTheme.colorScheme.onBackground,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis
@@ -1122,6 +1175,7 @@ fun VaultFileRow(
   Card(
     modifier = Modifier
       .fillMaxWidth()
+      .defaultMinSize(minHeight = 72.dp)
       .clip(RoundedCornerShape(16.dp))
       .combinedClickable(
         onClick = {
@@ -1140,13 +1194,13 @@ fun VaultFileRow(
     colors = CardDefaults.cardColors(
       containerColor = if (isSelected) GenziiPurpleContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surface
     ),
-    border = if (isSelected) BorderStroke(2.dp, GenziiPurple) else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+    border = if (isSelected) BorderStroke(2.dp, GenziiPurple) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.5.dp)
   ) {
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .padding(12.dp),
+        .padding(horizontal = 14.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically
     ) {
       if (isSelectionMode) {
@@ -1163,27 +1217,49 @@ fun VaultFileRow(
         )
       }
 
-      DocumentThumbnailView(doc = doc)
+      DocumentThumbnailView(doc = doc, size = 44.dp)
 
       Spacer(modifier = Modifier.width(12.dp))
 
-      Column(modifier = Modifier.weight(1f)) {
+      Column(
+        modifier = Modifier.weight(1f),
+        verticalArrangement = Arrangement.Center
+      ) {
         Text(
-          text = doc.name,
+          text = doc.displayName,
+          fontFamily = PoppinsFontFamily,
           style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
           color = MaterialTheme.colorScheme.onBackground,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis
         )
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(modifier = Modifier.height(3.dp))
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
           Text(
-            text = "${doc.sizeFormatted} • ${doc.updatedAt}",
+            text = doc.sizeFormatted,
+            fontFamily = PoppinsFontFamily,
             style = MaterialTheme.typography.bodySmall,
+            fontSize = 11.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+          Text(
+            text = "•",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+          )
+          Text(
+            text = doc.updatedAt,
+            fontFamily = PoppinsFontFamily,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
           )
           if (doc.isEncrypted) {
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(2.dp))
             Icon(
               imageVector = Icons.Default.Lock,
               contentDescription = "Encrypted",
@@ -1195,20 +1271,28 @@ fun VaultFileRow(
       }
 
       if (!isSelectionMode) {
-        IconButton(onClick = onStarClick) {
+        IconButton(
+          onClick = onStarClick,
+          modifier = Modifier.size(36.dp)
+        ) {
           Icon(
             imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
-            contentDescription = "Star",
-            tint = if (doc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant
+            contentDescription = if (doc.isStarred) "Starred" else "Star",
+            tint = if (doc.isStarred) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(20.dp)
           )
         }
 
         Box {
-          IconButton(onClick = { showMenu = true }) {
+          IconButton(
+            onClick = { showMenu = true },
+            modifier = Modifier.size(36.dp)
+          ) {
             Icon(
               imageVector = Icons.Default.MoreVert,
-              contentDescription = "More",
-              tint = MaterialTheme.colorScheme.onSurfaceVariant
+              contentDescription = "More actions",
+              tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+              modifier = Modifier.size(20.dp)
             )
           }
           DropdownMenu(
@@ -1216,15 +1300,15 @@ fun VaultFileRow(
             onDismissRequest = { showMenu = false }
           ) {
             DropdownMenuItem(
-              text = { Text("Open Preview") },
+              text = { Text("Open Preview", fontFamily = PoppinsFontFamily) },
               onClick = {
                 showMenu = false
                 onClick()
               },
-              leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null) }
+              leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null, tint = GenziiPurple) }
             )
             DropdownMenuItem(
-              text = { Text("Delete") },
+              text = { Text("Delete", fontFamily = PoppinsFontFamily, color = GenziiError) },
               onClick = {
                 showMenu = false
                 onDeleteClick()

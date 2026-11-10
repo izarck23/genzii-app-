@@ -21,7 +21,55 @@ data class DocumentItem(
   val uriString: String? = null,
   val pageCount: Int = 1,
   val createdAt: Long = System.currentTimeMillis()
-)
+) {
+  val displayName: String
+    get() {
+      val trimmed = name.trim()
+      val ext = if (trimmed.contains(".")) trimmed.substringAfterLast('.').lowercase() else ""
+      val nameWithoutExt = if (trimmed.contains(".")) trimmed.substringBeforeLast('.') else trimmed
+
+      // Check if name is an internal hex / hash / UUID / storage identifier
+      val isHexOrHash = nameWithoutExt.length >= 16 && nameWithoutExt.all {
+        it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == '_' || it == '-'
+      }
+      val isRawStorageId = nameWithoutExt.startsWith("temp_", ignoreCase = true) ||
+                           nameWithoutExt.startsWith("Document_", ignoreCase = true) && nameWithoutExt.removePrefix("Document_").all { it.isDigit() } ||
+                           nameWithoutExt.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))
+
+      if (isHexOrHash || isRawStorageId) {
+        val headingTitle = content.lineSequence()
+          .map { it.trim().trim('#', '*', ' ', '-') }
+          .firstOrNull { it.isNotBlank() && it.length in 4..40 && !it.startsWith("http") }
+
+        if (headingTitle != null) {
+          val cleanTitle = headingTitle.replace(Regex("[^a-zA-Z0-9 _-]"), "").trim()
+          return if (ext.isNotBlank()) "$cleanTitle.$ext" else cleanTitle
+        }
+
+        val typePrefix = when (type) {
+          FileType.PDF -> "Research_Doc"
+          FileType.DOCX -> "Academic_Draft"
+          FileType.PPTX -> "Lecture_Slides"
+          FileType.TXT -> "Vault_Note"
+          FileType.IMAGE -> "Scanned_Image"
+          FileType.AUDIO -> "Lecture_Audio"
+          FileType.OTHER -> "Encrypted_File"
+        }
+        val shortId = nameWithoutExt.take(6).uppercase()
+        val finalExt = if (ext.isNotBlank()) ext else when (type) {
+          FileType.PDF -> "pdf"
+          FileType.DOCX -> "docx"
+          FileType.IMAGE -> "jpg"
+          FileType.TXT -> "txt"
+          FileType.PPTX -> "pptx"
+          FileType.AUDIO -> "mp3"
+          else -> "bin"
+        }
+        return "${typePrefix}_$shortId.$finalExt"
+      }
+      return trimmed
+    }
+}
 
 enum class DocumentSortOrder(val id: String, val displayName: String, val shortLabel: String) {
   DATE_NEWEST("date_desc", "Date Created (Newest First)", "Date (Newest)"),

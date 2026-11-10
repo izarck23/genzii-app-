@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -133,14 +134,14 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
     modifier = Modifier
       .fillMaxWidth()
       .navigationBarsPadding()
-      .padding(horizontal = 16.dp, vertical = 8.dp),
+      .padding(horizontal = 16.dp, vertical = 6.dp),
     contentAlignment = Alignment.Center
   ) {
     Surface(
-      shape = RoundedCornerShape(32.dp),
+      shape = RoundedCornerShape(28.dp),
       color = MaterialTheme.colorScheme.surface,
-      tonalElevation = 8.dp,
-      shadowElevation = 14.dp,
+      tonalElevation = 6.dp,
+      shadowElevation = 10.dp,
       border = BorderStroke(
         width = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
@@ -152,8 +153,8 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 6.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+          .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
         BottomNavItems.forEach { item ->
@@ -161,33 +162,19 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
 
           val animatedIndicatorColor by androidx.compose.animation.animateColorAsState(
             targetValue = if (isSelected) GenziiPurple.copy(alpha = 0.12f) else Color.Transparent,
-            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+            animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
             label = "indicatorColor"
           )
-          val animatedIconTint by androidx.compose.animation.animateColorAsState(
+          val animatedContentColor by androidx.compose.animation.animateColorAsState(
             targetValue = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
-            label = "iconTint"
-          )
-          val animatedTextTint by androidx.compose.animation.animateColorAsState(
-            targetValue = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-            animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
-            label = "textTint"
-          )
-          val animatedScale by androidx.compose.animation.core.animateFloatAsState(
-            targetValue = if (isSelected) 1.12f else 1.0f,
-            animationSpec = androidx.compose.animation.core.spring(
-              dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-              stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-            ),
-            label = "iconScale"
+            animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
+            label = "contentColor"
           )
 
-          Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = animatedIndicatorColor,
+          Box(
             modifier = Modifier
-              .clip(RoundedCornerShape(20.dp))
+              .weight(1f)
+              .clip(RoundedCornerShape(16.dp))
               .clickable {
                 navController.navigate(item.route) {
                   popUpTo(navController.graph.findStartDestination().id) {
@@ -197,32 +184,41 @@ fun GenziiBottomNavigationBar(navController: NavHostController) {
                   restoreState = true
                 }
               }
-              .testTag(item.testTag)
+              .testTag(item.testTag),
+            contentAlignment = Alignment.Center
           ) {
             Column(
               horizontalAlignment = Alignment.CenterHorizontally,
               verticalArrangement = Arrangement.Center,
-              modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-                .defaultMinSize(minWidth = 56.dp, minHeight = 44.dp)
+              modifier = Modifier.padding(vertical = 4.dp)
             ) {
-              Icon(
-                imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                contentDescription = item.label,
-                tint = animatedIconTint,
+              Box(
                 modifier = Modifier
-                  .size(20.dp)
-                  .scale(animatedScale)
-              )
+                  .clip(RoundedCornerShape(14.dp))
+                  .background(animatedIndicatorColor)
+                  .padding(horizontal = 10.dp, vertical = 3.dp),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                  contentDescription = item.label,
+                  tint = animatedContentColor,
+                  modifier = Modifier.size(20.dp)
+                )
+              }
 
-              Spacer(modifier = Modifier.height(3.dp))
+              Spacer(modifier = Modifier.height(2.dp))
 
               Text(
                 text = item.label,
                 fontFamily = PoppinsFontFamily,
-                fontSize = 10.sp,
+                fontSize = 10.5.sp,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                color = animatedTextTint
+                color = animatedContentColor,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
               )
             }
           }

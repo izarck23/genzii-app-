@@ -632,8 +632,10 @@ fun RecentActivityCard(
 
       Column(modifier = Modifier.weight(1f)) {
         Text(
-          text = doc.name,
+          text = doc.displayName,
+          fontFamily = PoppinsFontFamily,
           style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
           color = MaterialTheme.colorScheme.onBackground,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis
