@@ -48,6 +48,7 @@ import com.example.util.PdfExportManager
 import com.example.util.UrlSecurityValidator
 import com.example.util.UrlValidationResult
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import android.widget.Toast
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,6 +85,11 @@ fun OriginalityCheckerScreen(
   var isCheckingUrl by remember { mutableStateOf(false) }
   var urlVerificationMessage by remember { mutableStateOf<String?>(null) }
   var showUpgradeDialogForFeature by remember { mutableStateOf<PremiumFeature?>(null) }
+  var batchQueue by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+  var isBatchScanning by remember { mutableStateOf(false) }
+  var batchProgressIndex by remember { mutableIntStateOf(0) }
+  var isRewriting by remember { mutableStateOf(false) }
+  var rewriteResult by remember { mutableStateOf<String?>(null) }
 
   val coroutineScope = rememberCoroutineScope()
 
@@ -113,6 +119,26 @@ fun OriginalityCheckerScreen(
           Toast.makeText(context, "Loaded: ${fileInfo.name} (${fileInfo.content.length} chars)", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
           Toast.makeText(context, "Could not read file: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+      }
+    }
+  }
+
+  val multiDocPickerLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenMultipleDocuments()
+  ) { uris: List<Uri> ->
+    if (uris.isNotEmpty()) {
+      coroutineScope.launch {
+        val loaded = mutableListOf<Pair<String, String>>()
+        for (u in uris) {
+          try {
+            val fileInfo = FileUtils.readPickedFile(context, u)
+            loaded.add(Pair(fileInfo.name, fileInfo.content))
+          } catch (_: Exception) {}
+        }
+        batchQueue = loaded
+        if (loaded.isNotEmpty()) {
+          Toast.makeText(context, "Queued ${loaded.size} documents for batch scanning", Toast.LENGTH_SHORT).show()
         }
       }
     }
@@ -449,16 +475,137 @@ fun OriginalityCheckerScreen(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                   Text(
-                    text = documentTitle,
+                    text = documentTitle.ifBlank { "No document selected yet" },
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onBackground
                   )
                   Text(
-                    text = "Selected from Secure Vault",
+                    text = if (documentTitle.isNotBlank()) "Loaded & ready to scan" else "Tap box above to select PDF, DOCX, or TXT",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                   )
+                }
+              }
+
+              // Batch Document Scanning Option (PRO)
+              Spacer(modifier = Modifier.height(12.dp))
+              OutlinedButton(
+                onClick = {
+                  if (userProfile.tier == SubscriptionTier.FREE) {
+                    showUpgradeDialogForFeature = PremiumFeature.MULTI_FILE_SCANNING
+                  } else {
+                    multiDocPickerLauncher.launch(
+                      arrayOf(
+                        "application/pdf",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "text/plain"
+                      )
+                    )
+                  }
+                },
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(44.dp)
+                  .testTag("batch_scan_button"),
+                shape = RoundedCornerShape(12.dp)
+              ) {
+                Icon(Icons.Filled.Layers, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = if (userProfile.tier == SubscriptionTier.FREE) "Batch Scan Multiple Documents (Pro)" else "Batch Upload Documents (.pdf, .docx, .txt)",
+                  color = GenziiPurple,
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.SemiBold
+                )
+              }
+
+              // Display Batch Queue if present
+              if (batchQueue.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                  shape = RoundedCornerShape(14.dp),
+                  colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Text("Batch Scanning Queue (${batchQueue.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground)
+                      TextButton(onClick = { batchQueue = emptyList() }) {
+                        Text("Clear Queue", fontSize = 11.sp, color = GenziiPurple)
+                      }
+                    }
+                    batchQueue.forEachIndexed { idx, item ->
+                      Row(
+                        modifier = Modifier
+                          .fillMaxWidth()
+                          .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Icon(Icons.Filled.Description, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                          text = item.first,
+                          fontSize = 12.sp,
+                          fontWeight = FontWeight.Medium,
+                          color = MaterialTheme.colorScheme.onBackground,
+                          modifier = Modifier.weight(1f),
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis
+                        )
+                        if (isBatchScanning && batchProgressIndex == idx) {
+                          CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = GenziiPurple)
+                        } else if (isBatchScanning && idx < batchProgressIndex) {
+                          Text("Done", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                        } else {
+                          Text("Queued", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                      }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                      onClick = {
+                        if (!isGeminiLive) {
+                          showApiKeyDialog = true
+                          return@Button
+                        }
+                        isBatchScanning = true
+                        coroutineScope.launch {
+                          for (i in batchQueue.indices) {
+                            batchProgressIndex = i
+                            val item = batchQueue[i]
+                            val result = GenziiRepository.scanOriginality(
+                              title = item.first,
+                              text = item.second
+                            )
+                            if (result.isSuccess && i == 0) {
+                              activeReport = result.getOrThrow()
+                            }
+                          }
+                          isBatchScanning = false
+                          Toast.makeText(context, "Completed batch analysis of ${batchQueue.size} documents", Toast.LENGTH_LONG).show()
+                        }
+                      },
+                      enabled = !isBatchScanning,
+                      colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+                      shape = RoundedCornerShape(10.dp),
+                      modifier = Modifier.fillMaxWidth().height(40.dp)
+                    ) {
+                      if (isBatchScanning) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Processing Queue (${batchProgressIndex + 1}/${batchQueue.size})...", fontSize = 12.sp)
+                      } else {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Start Batch Scan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -700,14 +847,36 @@ fun OriginalityCheckerScreen(
               } else {
                 Button(
                   onClick = {
+                    if (isScanning || isCheckingUrl) return@Button
                     val validation = UrlSecurityValidator.validateUrl(urlInput)
-                    if (validation is UrlValidationResult.Valid) {
-                      urlVerificationMessage = "✓ URL security validation passed (${validation.host}). Target endpoint is public and ready for academic content extraction in Phase 2."
-                    } else if (validation is UrlValidationResult.Invalid) {
-                      urlVerificationMessage = "⚠️ URL validation error: ${validation.reason}"
+                    if (validation !is UrlValidationResult.Valid) {
+                      urlVerificationMessage = "⚠️ URL validation error: ${(validation as? UrlValidationResult.Invalid)?.reason ?: "Invalid URL"}"
+                      return@Button
+                    }
+                    if (!isGeminiLive) {
+                      scanErrorMessage = "Google Gemini API key is required to analyze web originality. Please configure your API key."
+                      showApiKeyDialog = true
+                      return@Button
+                    }
+                    isScanning = true
+                    isCheckingUrl = true
+                    urlVerificationMessage = "Extracting public web article from ${validation.host}..."
+                    coroutineScope.launch {
+                      val scanRes = GenziiRepository.extractAndScanUrl(urlInput)
+                      isScanning = false
+                      isCheckingUrl = false
+                      if (scanRes.isSuccess) {
+                        activeReport = scanRes.getOrThrow()
+                        urlVerificationMessage = null
+                        showInterstitialAdDialog = true
+                        Toast.makeText(context, "URL scan complete: ${activeReport?.originalPercentage}% Authentic", Toast.LENGTH_SHORT).show()
+                      } else {
+                        val ex = scanRes.exceptionOrNull()
+                        urlVerificationMessage = "⚠️ ${ex?.message ?: "Unable to complete URL originality verification."}"
+                      }
                     }
                   },
-                  enabled = urlInput.isNotBlank() && urlValidation is UrlValidationResult.Valid,
+                  enabled = urlInput.isNotBlank() && urlValidation is UrlValidationResult.Valid && !isScanning && !isCheckingUrl,
                   modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
@@ -718,14 +887,29 @@ fun OriginalityCheckerScreen(
                   ),
                   shape = RoundedCornerShape(14.dp)
                 ) {
-                  Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                  Spacer(modifier = Modifier.width(8.dp))
-                  Text(
-                    text = "Verify URL Originality",
-                    fontFamily = PoppinsFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                  )
+                  if (isCheckingUrl) {
+                    CircularProgressIndicator(
+                      modifier = Modifier.size(18.dp),
+                      strokeWidth = 2.dp,
+                      color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "Extracting & Scanning...",
+                      fontFamily = PoppinsFontFamily,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 14.sp
+                    )
+                  } else {
+                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "Verify URL Originality",
+                      fontFamily = PoppinsFontFamily,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 14.sp
+                    )
+                  }
                 }
 
                 if (urlVerificationMessage != null) {
@@ -997,6 +1181,51 @@ fun OriginalityCheckerScreen(
           Spacer(modifier = Modifier.height(14.dp))
 
           GoogleTestBannerAd()
+
+          if (reports.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                  imageVector = Icons.Default.History,
+                  contentDescription = null,
+                  tint = GenziiPurple,
+                  modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "Recent Scan History (${reports.size})",
+                  fontFamily = PoppinsFontFamily,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 15.sp,
+                  color = MaterialTheme.colorScheme.onBackground
+                )
+              }
+
+              TextButton(
+                onClick = { GenziiRepository.clearAllReports() },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+              ) {
+                Text("Clear All", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+              }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+              reports.values.reversed().forEach { pastReport ->
+                ScanHistoryCard(
+                  report = pastReport,
+                  onReopen = { activeReport = pastReport },
+                  onDelete = { GenziiRepository.deleteReport(pastReport.id) }
+                )
+              }
+            }
+          }
         }
 
         Spacer(modifier = Modifier.height(28.dp))
@@ -1183,6 +1412,125 @@ fun OriginalityCheckerScreen(
         } else {
           items(report.sources) { source ->
             SourceMatchCard(source = source)
+          }
+        }
+
+        // Smart Rewrite Assistant for Flagged Passages
+        if (report.similarityPercentage > 0 || report.sources.isNotEmpty()) {
+          item {
+            Card(
+              shape = RoundedCornerShape(18.dp),
+              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+              border = BorderStroke(1.dp, GenziiPurple.copy(alpha = 0.3f)),
+              elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("smart_rewrite_card")
+            ) {
+              Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.AutoFixHigh, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "Smart Rewrite Assistant",
+                      fontFamily = PoppinsFontFamily,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 14.5.sp,
+                      color = MaterialTheme.colorScheme.onBackground
+                    )
+                  }
+                  Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = GenziiPurpleContainer
+                  ) {
+                    Text(
+                      text = "PRO FEATURE",
+                      fontSize = 9.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = GenziiPurple,
+                      modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                  text = "Improve flagged passages with authentic academic phrasing that maintains your original citations and arguments while clearing similarity matches.",
+                  fontSize = 12.sp,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                  onClick = {
+                    if (userProfile.tier == SubscriptionTier.FREE) {
+                      showUpgradeDialogForFeature = PremiumFeature.SMART_REWRITE
+                    } else {
+                      coroutineScope.launch {
+                        isRewriting = true
+                        val passage = report.highlightedContent.ifBlank { textInput.take(500) }
+                        rewriteResult = GeminiService.generateWritingTransformation(
+                          tool = "Smart Rewrite Assistant",
+                          sourceText = passage,
+                          customApiKey = userProfile.customApiKey
+                        )
+                        isRewriting = false
+                      }
+                    }
+                  },
+                  colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+                  shape = RoundedCornerShape(12.dp),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                ) {
+                  if (isRewriting) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Generating Scholarly Rewrite...", fontSize = 12.5.sp)
+                  } else {
+                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Rewrite Flagged Passage with AI", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                  }
+                }
+
+                if (rewriteResult != null) {
+                  Spacer(modifier = Modifier.height(12.dp))
+                  Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, GenziiPurple.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                  ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Text("Suggested Academic Phrasing", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GenziiPurple)
+                        IconButton(
+                          onClick = {
+                            clipboardManager.setText(AnnotatedString(rewriteResult!!))
+                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                          },
+                          modifier = Modifier.size(24.dp)
+                        ) {
+                          Icon(Icons.Filled.ContentCopy, contentDescription = "Copy", tint = GenziiPurple, modifier = Modifier.size(16.dp))
+                        }
+                      }
+                      Spacer(modifier = Modifier.height(6.dp))
+                      Text(rewriteResult!!, fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onBackground)
+                    }
+                  }
+                }
+              }
+            }
           }
         }
 
@@ -1552,3 +1900,109 @@ fun SourceMatchCard(source: SourceMatch) {
     }
   }
 }
+
+@Composable
+fun ScanHistoryCard(
+  report: OriginalityReport,
+  onReopen: () -> Unit,
+  onDelete: () -> Unit
+) {
+  val isAuthentic = report.originalPercentage >= 80
+  val isModerate = report.originalPercentage in 50..79
+  val badgeBg = when {
+    isAuthentic -> Color(0xFFF0FDF4)
+    isModerate -> Color(0xFFFFFBEB)
+    else -> Color(0xFFFEF2F2)
+  }
+  val badgeText = when {
+    isAuthentic -> Color(0xFF166534)
+    isModerate -> Color(0xFFB45309)
+    else -> Color(0xFF991B1B)
+  }
+
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(16.dp))
+      .clickable(onClick = onReopen)
+      .testTag("history_item_${report.id}"),
+    shape = RoundedCornerShape(16.dp),
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(14.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Box(
+        modifier = Modifier
+          .size(42.dp)
+          .clip(CircleShape)
+          .background(badgeBg),
+        contentAlignment = Alignment.Center
+      ) {
+        Icon(
+          imageVector = if (isAuthentic) Icons.Default.Verified else if (isModerate) Icons.Default.Warning else Icons.Default.FactCheck,
+          contentDescription = null,
+          tint = badgeText,
+          modifier = Modifier.size(20.dp)
+        )
+      }
+
+      Spacer(modifier = Modifier.width(12.dp))
+
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = report.documentTitle,
+          fontFamily = PoppinsFontFamily,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 13.5.sp,
+          color = MaterialTheme.colorScheme.onBackground,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+          text = "${report.wordsCount} words • ${report.scanDate} • ${report.sourcesCount} sources",
+          fontFamily = PoppinsFontFamily,
+          fontSize = 11.5.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+      }
+
+      Spacer(modifier = Modifier.width(8.dp))
+
+      Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = badgeBg
+      ) {
+        Text(
+          text = "${report.originalPercentage}%",
+          fontFamily = PoppinsFontFamily,
+          fontWeight = FontWeight.Bold,
+          fontSize = 12.sp,
+          color = badgeText,
+          modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+      }
+
+      IconButton(
+        onClick = onDelete,
+        modifier = Modifier.size(32.dp)
+      ) {
+        Icon(
+          imageVector = Icons.Default.Close,
+          contentDescription = "Delete from history",
+          tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+          modifier = Modifier.size(16.dp)
+        )
+      }
+    }
+  }
+}
+

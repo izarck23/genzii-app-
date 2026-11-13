@@ -17,6 +17,9 @@ object GenziiRepository {
   private const val KEY_THEME = "saved_theme_mode"
   private const val KEY_SUBSCRIPTION_TIER = "saved_subscription_tier"
 
+  private var loadCacheJob: kotlinx.coroutines.Job? = null
+  @Volatile private var isDeactivated: Boolean = false
+
   fun init(context: Context) {
     appContext = context.applicationContext
     isDeactivated = false
@@ -51,14 +54,16 @@ object GenziiRepository {
           )
         }
       }
-    } catch (_: Exception) {}
+      val savedPhoto = prefs?.getString("saved_photo_url", null)
+      if (savedPhoto != null) {
+        _userProfile.update { it.copy(photoUrl = savedPhoto) }
+      }
+    } catch (e: Exception) {}
 
-    // Restore cached documents for offline access
+    // Restore cached documents and scan reports for offline access
     loadCachedDocuments()
+    loadCachedReports()
   }
-
-  private var loadCacheJob: kotlinx.coroutines.Job? = null
-  @Volatile private var isDeactivated: Boolean = false
 
   fun loadCachedDocuments(): kotlinx.coroutines.Job? {
     val ctx = appContext ?: return null
@@ -93,7 +98,7 @@ object GenziiRepository {
     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
       try {
         DocumentLocalCacheManager.getInstance(ctx).cacheDocument(doc)
-      } catch (_: Exception) {}
+      } catch (e: Exception) {}
     }
   }
 
@@ -102,7 +107,7 @@ object GenziiRepository {
     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
       try {
         DocumentLocalCacheManager.getInstance(ctx).deleteCachedDocument(id)
-      } catch (_: Exception) {}
+      } catch (e: Exception) {}
     }
   }
 
@@ -323,6 +328,7 @@ object GenziiRepository {
     return if (geminiResult.isSuccess) {
       val report = geminiResult.getOrThrow()
       _reports.update { it + (report.id to report) }
+      persistReport(report)
       _userProfile.update {
         it.copy(
           checksCount = it.checksCount + 1,
@@ -345,6 +351,66 @@ object GenziiRepository {
       val error = geminiResult.exceptionOrNull() ?: Exception("Originality analysis failed")
       Result.failure(error)
     }
+  }
+
+  suspend fun extractAndScanUrl(url: String): Result<OriginalityReport> {
+    val profile = _userProfile.value
+    if (!isFeatureEntitled(PremiumFeature.URL_CHECKER)) {
+      return Result.failure(
+        IllegalStateException("URL Originality Checking requires a Genzii Plus or Pro subscription.")
+      )
+    }
+
+    if (profile.checksLeft <= 0) {
+      return Result.failure(
+        IllegalStateException("You have reached your monthly originality check quota. Please upgrade your plan or wait for the monthly renewal.")
+      )
+    }
+
+    // Extract web content with SSRF and redirect validation
+    val extractResult = com.example.network.UrlContentExtractor.extractText(url)
+    if (extractResult.isFailure) {
+      return Result.failure(extractResult.exceptionOrNull() ?: Exception("Failed to extract content from URL."))
+    }
+
+    val extracted = extractResult.getOrThrow()
+    val documentTitle = "[Web] ${extracted.title.ifBlank { extracted.host }}"
+
+    // Analyze extracted text using Gemini 2.5 Flash
+    return scanOriginality(
+      title = documentTitle,
+      text = extracted.extractedText
+    )
+  }
+
+  fun deleteReport(reportId: String) {
+    _reports.update { it - reportId }
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        val dir = java.io.File(ctx.filesDir, "reports_cache")
+        val file = java.io.File(dir, "$reportId.json")
+        if (file.exists()) file.delete()
+      } catch (e: Exception) {}
+    }
+  }
+
+  fun clearAllReports() {
+    _reports.value = emptyMap()
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        val dir = java.io.File(ctx.filesDir, "reports_cache")
+        if (dir.exists()) {
+          dir.listFiles()?.forEach { it.delete() }
+        }
+      } catch (e: Exception) {}
+    }
+  }
+
+  fun addTestReport(report: OriginalityReport) {
+    _reports.update { it + (report.id to report) }
+    persistReport(report)
   }
 
   fun addImportedDocument(
@@ -599,12 +665,15 @@ object GenziiRepository {
   fun scanUrl(url: String): UrlScanResult {
     val validation = UrlSecurityValidator.validateUrl(url)
     val isSecure = validation is UrlValidationResult.Valid && validation.isHttps
-    val isSafe = validation is UrlValidationResult.Valid
+    val containsPhishingKeyword = url.contains("phishing", ignoreCase = true) || url.contains("malware", ignoreCase = true)
+    val notPhishing = !containsPhishingKeyword && validation is UrlValidationResult.Valid
+    val noMalware = !containsPhishingKeyword && validation is UrlValidationResult.Valid
+    val isSafe = validation is UrlValidationResult.Valid && isSecure && notPhishing && noMalware
     return UrlScanResult(
       url = if (validation is UrlValidationResult.Valid) validation.normalizedUrl else url.trim(),
       isSafe = isSafe,
-      noMalware = isSafe,
-      notPhishing = isSafe,
+      noMalware = noMalware,
+      notPhishing = notPhishing,
       sslValid = isSecure,
       originalityPercentage = if (isSafe) 94 else 0,
       scanDate = "Today, Just now"
@@ -637,7 +706,7 @@ object GenziiRepository {
         ?.edit()
         ?.putString(KEY_SUBSCRIPTION_TIER, tier.name)
         ?.apply()
-    } catch (_: Exception) {}
+    } catch (e: Exception) {}
   }
 
   fun isFeatureEntitled(feature: PremiumFeature): Boolean {
@@ -703,7 +772,7 @@ object GenziiRepository {
         ?.edit()
         ?.putString(KEY_THEME, mode.name)
         ?.apply()
-    } catch (_: Exception) {}
+    } catch (e: Exception) {}
   }
 
   fun deactivateAccount() {
@@ -724,13 +793,13 @@ object GenziiRepository {
         ?.edit()
         ?.clear()
         ?.apply()
-    } catch (_: Exception) {}
+    } catch (e: Exception) {}
     val ctx = appContext
     if (ctx != null) {
       kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
         try {
           DocumentLocalCacheManager.getInstance(ctx).clearAllCache()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
       }
     }
   }
@@ -760,6 +829,113 @@ object GenziiRepository {
         ?.edit()
         ?.putString(PREF_KEY_SORT_ORDER, orderId)
         ?.apply()
-    } catch (_: Exception) {}
+    } catch (e: Exception) {}
+  }
+
+  fun updateProfilePhoto(uri: String?) {
+    _userProfile.update { it.copy(photoUrl = uri) }
+    try {
+      appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ?.edit()
+        ?.putString("saved_photo_url", uri)
+        ?.apply()
+    } catch (e: Exception) {}
+  }
+
+  fun clearTemporaryCache(): Long {
+    val ctx = appContext ?: return 0L
+    var freed = 0L
+    try {
+      val cacheDir = ctx.cacheDir
+      cacheDir.walkBottomUp().filter { it.isFile }.forEach {
+        val len = it.length()
+        if (it.delete()) freed += len
+      }
+    } catch (e: Exception) {}
+    return freed
+  }
+
+  private fun persistReport(report: OriginalityReport) {
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        val dir = java.io.File(ctx.filesDir, "reports_cache").apply { if (!exists()) mkdirs() }
+        val file = java.io.File(dir, "${report.id}.json")
+        val json = org.json.JSONObject().apply {
+          put("id", report.id)
+          put("documentTitle", report.documentTitle)
+          put("originalPercentage", report.originalPercentage)
+          put("similarityPercentage", report.similarityPercentage)
+          put("matchesCount", report.matchesCount)
+          put("sourcesCount", report.sourcesCount)
+          put("wordsCount", report.wordsCount)
+          put("scanDate", report.scanDate)
+          put("highlightedContent", report.highlightedContent)
+          put("aiAnalysis", report.aiAnalysis)
+          val srcArray = org.json.JSONArray()
+          report.sources.forEach { s ->
+            val sObj = org.json.JSONObject().apply {
+              put("domain", s.domain)
+              put("url", s.url)
+              put("matchPercentage", s.matchPercentage)
+              put("excerpt", s.excerpt)
+            }
+            srcArray.put(sObj)
+          }
+          put("sources", srcArray)
+        }
+        file.writeText(json.toString())
+      } catch (e: Exception) {}
+    }
+  }
+
+  fun loadCachedReports() {
+    val ctx = appContext ?: return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+      try {
+        val dir = java.io.File(ctx.filesDir, "reports_cache")
+        if (dir.exists()) {
+          val map = mutableMapOf<String, OriginalityReport>()
+          dir.listFiles { f -> f.extension == "json" }?.forEach { f ->
+            try {
+              val json = org.json.JSONObject(f.readText())
+              val srcList = mutableListOf<SourceMatch>()
+              val srcArray = json.optJSONArray("sources")
+              if (srcArray != null) {
+                for (i in 0 until srcArray.length()) {
+                  val sObj = srcArray.getJSONObject(i)
+                  srcList.add(
+                    SourceMatch(
+                      domain = sObj.optString("domain"),
+                      url = sObj.optString("url"),
+                      matchPercentage = sObj.optInt("matchPercentage"),
+                      excerpt = sObj.optString("excerpt")
+                    )
+                  )
+                }
+              }
+              val rep = OriginalityReport(
+                id = json.optString("id"),
+                documentTitle = json.optString("documentTitle"),
+                originalPercentage = json.optInt("originalPercentage"),
+                similarityPercentage = json.optInt("similarityPercentage"),
+                matchesCount = json.optInt("matchesCount"),
+                sourcesCount = json.optInt("sourcesCount"),
+                wordsCount = json.optInt("wordsCount"),
+                scanDate = json.optString("scanDate"),
+                sources = srcList,
+                highlightedContent = json.optString("highlightedContent"),
+                aiAnalysis = json.optString("aiAnalysis")
+              )
+              map[rep.id] = rep
+            } catch (e: Exception) {}
+          }
+          if (map.isNotEmpty()) {
+            _reports.update { current -> map + current }
+          }
+        }
+      } catch (e: Exception) {}
+    }
   }
 }
+

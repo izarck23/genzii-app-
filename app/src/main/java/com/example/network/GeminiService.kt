@@ -480,6 +480,9 @@ object GeminiService {
     }
 
     val taskInstruction = when (tool) {
+      "Smart Rewrite Assistant" -> "Rewrite the following academic passage with natural scholarly fluency and unique syntactic structure to eliminate duplicate phrase matches while strictly preserving all factual claims, technical concepts, and in-text citations."
+      "Citation Checker" -> "Analyze the following citation or bibliography entry against standard academic style guidelines (APA 7th, MLA 9th, Harvard, Chicago). Verify author name order, publication date, title capitalizations, and DOI/URL. Return the standardized, corrected citation followed by a concise bulleted list of formatting checks."
+      "Document Comparison" -> "Perform an academic comparison of the documents provided. Identify verbatim identical sentences, paraphrased modifications, and added/deleted sections. Conclude with an estimated textual similarity percentage."
       "Paraphraser" -> "Rephrase the following academic passage with sophisticated vocabulary and distinct syntactic structure while preserving core meaning."
       "Summarizer" -> "Provide a concise, dense academic summary extracting key arguments, findings, and implications."
       "Grammar Checker" -> "Proofread and correct all grammar, punctuation, and stylistic inconsistencies, returning the polished version followed by a bulleted changelog."

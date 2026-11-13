@@ -349,9 +349,7 @@ fun GenziiNavGraph(
           }
         },
         onUpgrade = {
-          navController.navigate(Screen.Profile.route) {
-            popUpTo(Screen.WelcomeBack.route) { inclusive = true }
-          }
+          navController.navigate(Screen.Premium.route)
         }
       )
     }
@@ -433,6 +431,9 @@ fun GenziiNavGraph(
         },
         onNavigateToNotifications = {
           navController.navigate(Screen.Notifications.route)
+        },
+        onNavigateToPremium = {
+          navController.navigate(Screen.Premium.route)
         },
         onLogout = {
           com.example.auth.FirebaseAuthManager.signOut()
@@ -516,6 +517,7 @@ fun GenziiNavGraph(
         onNavigateToPrivacy = { navController.navigate(Screen.PrivacySecurity.route) },
         onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
         onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+        onNavigateToPremium = { navController.navigate(Screen.Premium.route) },
         onLogout = {
           com.example.auth.FirebaseAuthManager.signOut()
           navController.navigate(Screen.Login.route) {

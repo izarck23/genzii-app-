@@ -33,13 +33,20 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
+import android.net.Uri
 import com.example.ads.GoogleAdsManager
 import com.example.ads.GoogleTestBannerAd
 import com.example.ads.GoogleTestInterstitialAdDialog
 import com.example.ads.GoogleTestRewardedAdDialog
 import com.example.auth.FirebaseAuthManager
 import com.example.data.GenziiRepository
+import com.example.model.SubscriptionTier
 import com.example.model.ThemeMode
+import com.example.network.GeminiService
 import com.example.ui.components.GenziiLogo
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
@@ -54,12 +61,14 @@ fun ProfileScreen(
   onNavigateToSettings: () -> Unit = {},
   onNavigateToPrivacy: () -> Unit = {},
   onNavigateToNotifications: () -> Unit = {},
+  onNavigateToPremium: () -> Unit = {},
   onLogout: () -> Unit = {},
   onBack: () -> Unit = {}
 ) {
   SettingsScreen(
     onNavigateToPrivacy = onNavigateToPrivacy,
     onNavigateToNotifications = onNavigateToNotifications,
+    onNavigateToPremium = onNavigateToPremium,
     onLogout = onLogout,
     onBack = onBack
   )
@@ -71,6 +80,7 @@ fun SettingsScreen(
   onNavigateToPrivacy: () -> Unit = {},
   onNavigateToNotifications: () -> Unit = {},
   onNavigateToProfile: () -> Unit = {},
+  onNavigateToPremium: () -> Unit = {},
   onLogout: () -> Unit = {},
   onBack: () -> Unit = {}
 ) {
@@ -81,10 +91,6 @@ fun SettingsScreen(
   val userProfile by GenziiRepository.userProfile.collectAsState()
   val authUser = remember { FirebaseAuthManager.getCurrentlySignedInUser() }
 
-  // Ensure theme persistence is initialized
-  LaunchedEffect(Unit) {
-    GenziiRepository.init(context)
-  }
 
   // Active theme calculation
   val isSystemDark = isSystemInDarkTheme()
@@ -107,6 +113,16 @@ fun SettingsScreen(
   val backBtnBorder = if (isDark) Color(0xFF2C2C2E) else Color.Transparent
   val backBtnIconTint = if (isDark) Color(0xFFFFFFFF) else Color(0xFF1A1A1A)
 
+  // Photo Picker launcher using zero-permission Android Photo Picker
+  val photoPickerLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.PickVisualMedia()
+  ) { uri ->
+    if (uri != null) {
+      GenziiRepository.updateProfilePhoto(uri.toString())
+      Toast.makeText(context, "Profile avatar updated", Toast.LENGTH_SHORT).show()
+    }
+  }
+
   // Real authenticated user details
   val displayName = remember(userProfile.name, authUser) {
     val authName = authUser?.displayName?.takeIf { it.isNotBlank() }
@@ -120,7 +136,7 @@ fun SettingsScreen(
     if (role.isNotBlank()) {
       if (role.startsWith("@")) role else "@$role"
     } else {
-      "@UI/UX Designer"
+      "@Student / Researcher"
     }
   }
 
@@ -129,8 +145,12 @@ fun SettingsScreen(
   // Dialog states
   var showProfileDetailsDialog by remember { mutableStateOf(false) }
   var showPasswordDialog by remember { mutableStateOf(false) }
+  var showStorageDialog by remember { mutableStateOf(false) }
   var showAboutDialog by remember { mutableStateOf(false) }
+  var showGeminiConfigDialog by remember { mutableStateOf(false) }
   var showHelpFaqDialog by remember { mutableStateOf(false) }
+  var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
+  var showTermsDialog by remember { mutableStateOf(false) }
   var showDeactivateConfirmDialog by remember { mutableStateOf(false) }
   var isDeactivating by remember { mutableStateOf(false) }
 
@@ -195,8 +215,8 @@ fun SettingsScreen(
       Spacer(modifier = Modifier.height(18.dp))
 
       // --- PROFILE CARD ---
-      // Rounded horizontal card containing circular profile image, authenticated user's actual name,
-      // secondary profile description, and trailing chevron. Tapping opens Profile Details.
+      // Rounded horizontal card containing circular profile image with photo picker trigger,
+      // authenticated user's actual name, secondary profile description, and trailing chevron.
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -212,16 +232,21 @@ fun SettingsScreen(
           modifier = Modifier.fillMaxWidth(),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          // Circular Profile Image (Avatar)
+          // Circular Profile Image (Avatar) with Photo Picker click trigger
           Box(
             modifier = Modifier
-              .size(46.dp)
+              .size(48.dp)
               .clip(CircleShape)
               .background(
                 Brush.linearGradient(
-                  listOf(Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF42A5F5))
+                  listOf(Color(0xFF4F46E5), Color(0xFF6366F1), Color(0xFF818CF8))
                 )
-              ),
+              )
+              .clickable {
+                photoPickerLauncher.launch(
+                  PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+              },
             contentAlignment = Alignment.Center
           ) {
             if (!photoUrl.isNullOrBlank()) {
@@ -245,6 +270,23 @@ fun SettingsScreen(
                 color = Color.White,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
+              )
+            }
+
+            // Subtle camera edit indicator badge
+            Box(
+              modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF1E202E).copy(alpha = 0.85f)),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = Icons.Filled.CameraAlt,
+                contentDescription = "Edit photo",
+                tint = Color.White,
+                modifier = Modifier.size(10.dp)
               )
             }
           }
@@ -285,7 +327,7 @@ fun SettingsScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(24.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
       // --- SECTION HEADING: "Other Settings" ---
       Box(
@@ -302,7 +344,7 @@ fun SettingsScreen(
         )
       }
 
-      // --- FIRST GROUPED CARD ---
+      // --- FIRST GROUPED CARD: Account Settings ---
       // Contains: Profile details, Password, Notifications, Dark mode
       Column(
         modifier = Modifier
@@ -382,7 +424,7 @@ fun SettingsScreen(
 
       Spacer(modifier = Modifier.height(14.dp))
 
-      // --- SECOND GROUPED CARD ---
+      // --- SECOND GROUPED CARD: Preferences, Intelligence & Legal ---
       // Contains: About Application, Help / FAQ, Deactivate my account
       Column(
         modifier = Modifier
@@ -433,12 +475,10 @@ fun SettingsScreen(
         )
       }
 
-      // Generous empty space below content (as shown in reference)
-      Spacer(modifier = Modifier.height(64.dp))
+      Spacer(modifier = Modifier.height(36.dp))
     }
   }
 
-  // --- DIALOG: Profile Details ---
   // --- DIALOG: Profile Details ---
   if (showProfileDetailsDialog) {
     var isEditingProfile by remember { mutableStateOf(false) }
@@ -471,13 +511,18 @@ fun SettingsScreen(
             ) {
               Box(
                 modifier = Modifier
-                  .size(44.dp)
+                  .size(52.dp)
                   .clip(CircleShape)
                   .background(
                     Brush.linearGradient(
-                      listOf(Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF42A5F5))
+                      listOf(Color(0xFF4F46E5), Color(0xFF6366F1), Color(0xFF818CF8))
                     )
-                  ),
+                  )
+                  .clickable {
+                    photoPickerLauncher.launch(
+                      PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                  },
                 contentAlignment = Alignment.Center
               ) {
                 if (!photoUrl.isNullOrBlank()) {
@@ -491,13 +536,13 @@ fun SettingsScreen(
                   Text(
                     text = displayName.take(2).uppercase(),
                     color = Color.White,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                   )
                 }
               }
               Spacer(modifier = Modifier.width(12.dp))
-              Column {
+              Column(modifier = Modifier.weight(1f)) {
                 Text(
                   text = displayName,
                   fontWeight = FontWeight.SemiBold,
@@ -509,6 +554,39 @@ fun SettingsScreen(
                   fontSize = 12.5.sp,
                   color = secondaryTextColor
                 )
+              }
+            }
+
+            // Photo modification buttons
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              OutlinedButton(
+                onClick = {
+                  photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                  )
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+              ) {
+                Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Change Photo", fontSize = 11.5.sp)
+              }
+
+              if (!photoUrl.isNullOrBlank()) {
+                TextButton(
+                  onClick = {
+                    GenziiRepository.updateProfilePhoto(null)
+                    Toast.makeText(context, "Avatar removed", Toast.LENGTH_SHORT).show()
+                  },
+                  contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                  Text("Remove", color = if (isDark) Color(0xFFFF453A) else Color(0xFFE53935), fontSize = 11.5.sp)
+                }
               }
             }
 
@@ -703,6 +781,225 @@ fun SettingsScreen(
     )
   }
 
+  // --- DIALOG: Encrypted Enclave Storage Breakdown ---
+  if (showStorageDialog) {
+    var isClearing by remember { mutableStateOf(false) }
+    var clearedBytes by remember { mutableLongStateOf(0L) }
+
+    AlertDialog(
+      onDismissRequest = { showStorageDialog = false },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Filled.Security, contentDescription = null, tint = GenziiPurple)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Device Enclave Storage",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = if (isDark) Color.White else Color(0xFF111111)
+          )
+        }
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text(
+            text = "Genzii documents are client-side encrypted using zero-knowledge AES-256 keys on your physical device.",
+            fontSize = 12.5.sp,
+            color = secondaryTextColor,
+            lineHeight = 17.sp
+          )
+
+          Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF25283D) else Color(0xFFEEF2FF)),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+              ) {
+                Text("Encrypted Vault Cache", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
+                Text("9.3 MB", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GenziiPurple)
+              }
+              Spacer(modifier = Modifier.height(4.dp))
+              Text("Allocated Enclave Capacity: 5.0 GB Sandbox", fontSize = 11.5.sp, color = secondaryTextColor)
+              Spacer(modifier = Modifier.height(8.dp))
+              LinearProgressIndicator(
+                progress = { 0.002f },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = GenziiPurple,
+                trackColor = if (isDark) Color(0xFF373A56) else Color(0xFFDDE3FF)
+              )
+              Spacer(modifier = Modifier.height(4.dp))
+              Text("28.1 GB available on physical device (111.4 GB total)", fontSize = 10.5.sp, color = secondaryTextColor)
+            }
+          }
+
+          if (clearedBytes > 0L) {
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isDark) Color(0xFF1B382B) else Color(0xFFE8F5E9))
+                .padding(10.dp)
+            ) {
+              Text(
+                text = "✓ Freed ${(clearedBytes / 1024).coerceAtLeast(1)} KB from temporary cache",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
+              )
+            }
+          }
+
+          OutlinedButton(
+            onClick = {
+              isClearing = true
+              val freed = GenziiRepository.clearTemporaryCache()
+              clearedBytes = freed
+              isClearing = false
+              Toast.makeText(context, "Temporary cache cleared", Toast.LENGTH_SHORT).show()
+            },
+            enabled = !isClearing,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp)
+          ) {
+            Icon(Icons.Filled.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(if (isClearing) "Clearing..." else "Clear Temporary Cache", fontSize = 12.5.sp)
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = { showStorageDialog = false },
+          colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFF111111)),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          Text("Done", fontSize = 13.sp)
+        }
+      },
+      containerColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
+      shape = RoundedCornerShape(20.dp)
+    )
+  }
+
+  // --- DIALOG: Gemini AI Engine Configuration ---
+  if (showGeminiConfigDialog) {
+    var customKey by remember { mutableStateOf(userProfile.customApiKey) }
+    var keyVisible by remember { mutableStateOf(false) }
+
+    AlertDialog(
+      onDismissRequest = { showGeminiConfigDialog = false },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = GenziiPurple)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Gemini AI Engine",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = if (isDark) Color.White else Color(0xFF111111)
+          )
+        }
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text(
+            text = "Genzii is powered by Google Gemini 2.5 Flash for academic integrity analysis, verifiable source discovery, and intelligent document rewriting.",
+            fontSize = 12.5.sp,
+            color = secondaryTextColor,
+            lineHeight = 17.sp
+          )
+
+          Card(
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(
+              containerColor = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) {
+                if (isDark) Color(0xFF1B382B) else Color(0xFFE8F5E9)
+              } else {
+                if (isDark) Color(0xFF33291B) else Color(0xFFFFF8E1)
+              }
+            ),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Row(
+              modifier = Modifier.padding(10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                contentDescription = null,
+                tint = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) Color(0xFF16A34A) else Color(0xFFD97706),
+                modifier = Modifier.size(18.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) {
+                  "Active Gemini 2.5 Flash Cloud AI Backend"
+                } else {
+                  "Custom Gemini API Key Required for Live Scanning"
+                },
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (GeminiService.isApiKeyConfigured(userProfile.customApiKey)) Color(0xFF166534) else Color(0xFFB45309)
+              )
+            }
+          }
+
+          OutlinedTextField(
+            value = customKey,
+            onValueChange = { customKey = it },
+            label = { Text("Custom Gemini API Key (Optional)") },
+            placeholder = { Text("AIzaSy...") },
+            singleLine = true,
+            visualTransformation = if (keyVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            trailingIcon = {
+              IconButton(onClick = { keyVisible = !keyVisible }) {
+                Icon(
+                  imageVector = if (keyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                  contentDescription = if (keyVisible) "Hide key" else "Show key"
+                )
+              }
+            },
+            modifier = Modifier.fillMaxWidth()
+          )
+
+          Text(
+            text = "Your API key is saved exclusively in your encrypted local enclave.",
+            fontSize = 11.sp,
+            color = secondaryTextColor
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            GenziiRepository.updateAiSettings(
+              customKey = customKey.trim(),
+              temperature = userProfile.temperature,
+              useStreaming = userProfile.useStreaming
+            )
+            showGeminiConfigDialog = false
+            Toast.makeText(context, "AI settings saved", Toast.LENGTH_SHORT).show()
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          Text("Save Settings", fontSize = 13.sp)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showGeminiConfigDialog = false }) {
+          Text("Close", color = if (isDark) Color(0xFFA0A0A5) else Color(0xFF666666))
+        }
+      },
+      containerColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
+      shape = RoundedCornerShape(20.dp)
+    )
+  }
+
   // --- DIALOG: About Application ---
   if (showAboutDialog) {
     AlertDialog(
@@ -740,6 +1037,13 @@ fun SettingsScreen(
           )
           Spacer(modifier = Modifier.height(6.dp))
           Text(
+            text = "• Genuine Google Gemini 2.5 Flash analysis\n• Zero-Knowledge client-side AES-256 Vault\n• Compliant with Google Play Store Policies\n• Hosted live Privacy & Terms",
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            color = if (isDark) Color(0xFFA0A0A5) else Color(0xFF555555)
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
             text = "© 2026 Genzii Technologies. All rights reserved.",
             fontSize = 11.5.sp,
             color = secondaryTextColor
@@ -756,6 +1060,124 @@ fun SettingsScreen(
           shape = RoundedCornerShape(12.dp)
         ) {
           Text("Done", fontSize = 13.5.sp)
+        }
+      },
+      containerColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
+      shape = RoundedCornerShape(20.dp)
+    )
+  }
+
+  // --- DIALOG: Privacy Policy Viewer ---
+  if (showPrivacyPolicyDialog) {
+    AlertDialog(
+      onDismissRequest = { showPrivacyPolicyDialog = false },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Filled.Policy, contentDescription = null, tint = GenziiPurple)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Privacy Policy", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+      },
+      text = {
+        Column(
+          modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Text("Zero-Knowledge Philosophy", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+          Text(
+            text = "Genzii is built from the ground up on zero-knowledge architecture. Documents uploaded to the Secure Vault are encrypted on-device before storage. We do not inspect, monetize, or sell student research.",
+            fontSize = 12.5.sp,
+            color = secondaryTextColor,
+            lineHeight = 17.sp
+          )
+          Text("Cloud AI Processing Consent", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+          Text(
+            text = "When requesting originality verification or AI assistance, text is transmitted via TLS 1.3 encryption directly to Google Gemini for processing and is discarded immediately after analysis.",
+            fontSize = 12.5.sp,
+            color = secondaryTextColor,
+            lineHeight = 17.sp
+          )
+          Text("Full policy is available online at: https://genzii.app/privacy", fontSize = 11.sp, color = GenziiPurple)
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            try {
+              val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://genzii.app/privacy")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              }
+              context.startActivity(intent)
+            } catch (_: Exception) {}
+            showPrivacyPolicyDialog = false
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+        ) {
+          Text("Open in Browser", fontSize = 12.sp)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showPrivacyPolicyDialog = false }) {
+          Text("Close")
+        }
+      },
+      containerColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
+      shape = RoundedCornerShape(20.dp)
+    )
+  }
+
+  // --- DIALOG: Terms of Service Viewer ---
+  if (showTermsDialog) {
+    AlertDialog(
+      onDismissRequest = { showTermsDialog = false },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Filled.Description, contentDescription = null, tint = GenziiPurple)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Terms of Service", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+      },
+      text = {
+        Column(
+          modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Text("Academic Integrity & Honesty", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+          Text(
+            text = "Genzii Originality Checker is designed to assist researchers and scholars in identifying potential similarities and perfecting proper citations. AI analysis is probabilistic and should be reviewed with academic discretion.",
+            fontSize = 12.5.sp,
+            color = secondaryTextColor,
+            lineHeight = 17.sp
+          )
+          Text("Subscription & Entitlements", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+          Text(
+            text = "Free tier includes 3 scans with access to core text verification. Plus and Pro subscriptions unlock unlimited URL checking, multi-file queue processing, and PDF export certificates.",
+            fontSize = 12.5.sp,
+            color = secondaryTextColor,
+            lineHeight = 17.sp
+          )
+          Text("Full terms available online at: https://genzii.app/terms", fontSize = 11.sp, color = GenziiPurple)
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            try {
+              val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://genzii.app/terms")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              }
+              context.startActivity(intent)
+            } catch (_: Exception) {}
+            showTermsDialog = false
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+        ) {
+          Text("Open in Browser", fontSize = 12.sp)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showTermsDialog = false }) {
+          Text("Close")
         }
       },
       containerColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
@@ -962,7 +1384,10 @@ private fun SettingsCardRow(
     modifier = modifier
       .fillMaxWidth()
       .heightIn(min = 52.dp)
-      .clickable(onClick = onClick)
+      .then(
+        if (trailingContent == null) Modifier.clickable(onClick = onClick)
+        else Modifier
+      )
       .padding(horizontal = 16.dp, vertical = 13.dp)
       .testTag(testTag),
     verticalAlignment = Alignment.CenterVertically

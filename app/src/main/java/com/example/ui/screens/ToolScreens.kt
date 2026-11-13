@@ -1057,7 +1057,17 @@ fun AiWritingToolsScreen(onBack: () -> Unit) {
   }
   var isTransforming by remember { mutableStateOf(false) }
 
-  val tools = listOf("Essay Writer", "Paraphraser", "Grammar Checker", "Summarizer", "Tone Changer", "Content Generator")
+  val tools = listOf(
+    "Smart Rewrite Assistant",
+    "Citation Checker",
+    "Document Comparison",
+    "Essay Writer",
+    "Paraphraser",
+    "Grammar Checker",
+    "Summarizer",
+    "Tone Changer",
+    "Content Generator"
+  )
 
   Scaffold(
     topBar = {
