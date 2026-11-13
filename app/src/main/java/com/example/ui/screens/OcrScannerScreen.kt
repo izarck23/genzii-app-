@@ -662,10 +662,13 @@ fun OcrScannerScreen(onBack: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Image Adjustment Action Buttons
+                // Image Adjustment Action Buttons (Scrollable horizontally to prevent squished buttons)
                 Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.SpaceEvenly
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  verticalAlignment = Alignment.CenterVertically
                 ) {
                   // Rotate 90
                   OutlinedButton(
@@ -680,18 +683,18 @@ fun OcrScannerScreen(onBack: () -> Unit) {
                   ) {
                     Icon(Icons.Default.RotateRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = GenziiPurple)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Rotate 90°", fontSize = 12.sp, color = GenziiPurple)
+                    Text("Rotate 90°", fontSize = 12.sp, color = GenziiPurple, maxLines = 1, softWrap = false)
                   }
 
                   // Straighten & Crop
                   OutlinedButton(
                     onClick = { showCropAdjustDialog = true },
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                   ) {
                     Icon(Icons.Default.Crop, contentDescription = null, modifier = Modifier.size(16.dp), tint = GenziiPurple)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Straighten", fontSize = 12.sp, color = GenziiPurple)
+                    Text("Straighten", fontSize = 12.sp, color = GenziiPurple, maxLines = 1, softWrap = false)
                   }
 
                   // Auto Detect Edges & Crop
@@ -705,11 +708,11 @@ fun OcrScannerScreen(onBack: () -> Unit) {
                       Toast.makeText(context, "Document edges automatically detected", Toast.LENGTH_SHORT).show()
                     },
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                   ) {
                     Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp), tint = GenziiPurple)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Auto Edge", fontSize = 12.sp, color = GenziiPurple)
+                    Text("Auto Edge", fontSize = 12.sp, color = GenziiPurple, maxLines = 1, softWrap = false)
                   }
 
                   // Reset
@@ -725,9 +728,9 @@ fun OcrScannerScreen(onBack: () -> Unit) {
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                   ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Reset", fontSize = 12.sp)
+                    Text("Reset", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, softWrap = false)
                   }
                 }
 

@@ -32,6 +32,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -257,19 +260,11 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxSize()
               )
             } else {
-              val initials = remember(displayName) {
-                val parts = displayName.split(".", " ", "_").filter { it.isNotBlank() }
-                if (parts.size >= 2) {
-                  "${parts[0].first().uppercase()}${parts[1].first().uppercase()}"
-                } else {
-                  displayName.take(2).uppercase().ifBlank { "U" }
-                }
-              }
-              Text(
-                text = initials,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+              Image(
+                painter = painterResource(id = R.drawable.img_user_avatar),
+                contentDescription = "Profile Photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
               )
             }
 
@@ -533,11 +528,11 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxSize()
                   )
                 } else {
-                  Text(
-                    text = displayName.take(2).uppercase(),
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                  Image(
+                    painter = painterResource(id = R.drawable.img_user_avatar),
+                    contentDescription = "Profile Photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                   )
                 }
               }

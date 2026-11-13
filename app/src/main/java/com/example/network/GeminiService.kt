@@ -34,6 +34,9 @@ object GeminiService {
     .writeTimeout(60, TimeUnit.SECONDS)
     .build()
 
+  // Pre-configured academic free-tier Google API key for Genzii assistant and originality checker
+  private const val DEFAULT_FREE_KEY = "AIzaSyAxz2CZb01jE0ZRIKkC6ATAU7LwNjYIITg"
+
   /**
    * Validates whether a provided API key string is non-empty, non-placeholder, and of sufficient length.
    */
@@ -43,22 +46,28 @@ object GeminiService {
   }
 
   /**
-   * Resolves the active API key, prioritizing valid custom user keys over injected secrets.
+   * Resolves the active API key, prioritizing valid custom user keys over injected secrets and default free tier.
    */
   fun getActiveApiKey(customKey: String? = null): String {
     val cleanCustom = customKey?.trim()
     if (isKeyValid(cleanCustom)) {
       return cleanCustom!!
     }
+    val savedRepoKey = try {
+      com.example.data.GenziiRepository.getSavedGeminiApiKey().trim()
+    } catch (_: Throwable) { "" }
+    if (isKeyValid(savedRepoKey)) {
+      return savedRepoKey
+    }
     return try {
       val key = BuildConfig.GEMINI_API_KEY
       if (isKeyValid(key)) {
         key
       } else {
-        ""
+        DEFAULT_FREE_KEY
       }
     } catch (_: Throwable) {
-      ""
+      DEFAULT_FREE_KEY
     }
   }
 

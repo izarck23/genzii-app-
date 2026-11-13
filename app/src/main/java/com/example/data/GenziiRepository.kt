@@ -58,6 +58,8 @@ object GenziiRepository {
       if (savedPhoto != null) {
         _userProfile.update { it.copy(photoUrl = savedPhoto) }
       }
+      val savedOcrUses = prefs?.getInt("saved_ocr_uses", 4) ?: 4
+      _ocrUsesRemaining.value = savedOcrUses
     } catch (e: Exception) {}
 
     // Restore cached documents and scan reports for offline access
@@ -157,12 +159,48 @@ object GenziiRepository {
         title = "Welcome to Genzii",
         description = "Explore AI writing, Originality checks, and your encrypted Secure Vault.",
         timestamp = "Just now",
-        isUnread = false,
+        isUnread = true,
         type = "general"
       )
     )
   )
   val notifications: StateFlow<List<NotificationItem>> = _notifications.asStateFlow()
+
+  private val _isWritingToolsUnlockedThisSession = MutableStateFlow(false)
+  val isWritingToolsUnlockedThisSession: StateFlow<Boolean> = _isWritingToolsUnlockedThisSession.asStateFlow()
+
+  fun unlockWritingToolsSession() {
+    _isWritingToolsUnlockedThisSession.value = true
+  }
+
+  private val _ocrUsesRemaining = MutableStateFlow(4)
+  val ocrUsesRemaining: StateFlow<Int> = _ocrUsesRemaining.asStateFlow()
+
+  fun decrementOcrUses(): Int {
+    val current = _ocrUsesRemaining.value
+    if (current > 0) {
+      val next = current - 1
+      _ocrUsesRemaining.value = next
+      try {
+        appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+          ?.edit()
+          ?.putInt("saved_ocr_uses", next)
+          ?.apply()
+      } catch (_: Exception) {}
+      return next
+    }
+    return 0
+  }
+
+  fun resetOcrUses() {
+    _ocrUsesRemaining.value = 4
+    try {
+      appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ?.edit()
+        ?.putInt("saved_ocr_uses", 4)
+        ?.apply()
+    } catch (_: Exception) {}
+  }
 
   val folders: List<Pair<String, Int>>
     get() {

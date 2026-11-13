@@ -32,6 +32,9 @@ import com.example.ads.GoogleTestBannerAd
 import com.example.ads.GoogleTestRewardedAdDialog
 import com.example.model.DocumentItem
 import com.example.model.FileType
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Brush
+import com.example.model.SubscriptionTier
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.util.FileUtils

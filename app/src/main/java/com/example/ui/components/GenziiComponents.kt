@@ -192,13 +192,39 @@ fun GenziiTopBar(
           tint = MaterialTheme.colorScheme.onBackground
         )
         if (unreadCount > 0) {
+          val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "notif_pulse")
+          val pulseScale by infiniteTransition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1.35f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+              animation = androidx.compose.animation.core.tween(durationMillis = 800, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+              repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "notif_scale"
+          )
+          val pulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1.0f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+              animation = androidx.compose.animation.core.tween(durationMillis = 800, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+              repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "notif_alpha"
+          )
+
           Box(
             modifier = Modifier
-              .size(8.dp)
               .align(Alignment.TopEnd)
-              .offset(x = (-8).dp, y = 8.dp)
+              .offset(x = (-7).dp, y = 7.dp)
+              .size(9.dp)
+              .androidx.compose.ui.graphics.graphicsLayer(
+                scaleX = pulseScale,
+                scaleY = pulseScale,
+                alpha = pulseAlpha
+              )
               .clip(CircleShape)
-              .background(GenziiError)
+              .background(Color(0xFFEF4444))
+              .border(1.dp, Color.White, CircleShape)
           )
         }
       }
@@ -224,12 +250,11 @@ fun GenziiTopBar(
             modifier = Modifier.fillMaxSize()
           )
         } else {
-          Text(
-            text = initials,
-            color = GenziiPurple,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            fontFamily = PoppinsFontFamily
+          Image(
+            painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_user_avatar),
+            contentDescription = "User profile photo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
           )
         }
       }

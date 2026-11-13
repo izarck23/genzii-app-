@@ -2198,24 +2198,30 @@ fun VaultFolderViewScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
               Button(
                 onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                 colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1.2f)
               ) {
                 Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Import to $folderName", fontSize = 12.sp)
+                Text("Import Files", fontSize = 12.sp, maxLines = 1, softWrap = false)
               }
 
               OutlinedButton(
                 onClick = { showNewNoteDialog = true },
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f)
               ) {
                 Icon(Icons.Default.NoteAdd, contentDescription = null, modifier = Modifier.size(16.dp), tint = GenziiPurple)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("New Note", fontSize = 12.sp, color = GenziiPurple)
+                Text("New Note", fontSize = 12.sp, color = GenziiPurple, maxLines = 1, softWrap = false)
               }
             }
           }
@@ -2952,16 +2958,9 @@ fun RealImageViewer(
                   detectTransformGestures { _, pan, zoom, _ ->
                     val newScale = (scale * zoom).coerceIn(1f, 5f)
                     scale = newScale
-                    if (newScale > 1.05f) {
-                      offsetX += pan.x
-                      offsetY += pan.y
-                      onZoomChange(true)
-                    } else {
-                      scale = 1f
-                      offsetX = 0f
-                      offsetY = 0f
-                      onZoomChange(false)
-                    }
+                    offsetX += pan.x
+                    offsetY += pan.y
+                    onZoomChange(newScale > 1.05f)
                   }
                 },
               contentAlignment = Alignment.Center
