@@ -1,7 +1,13 @@
 package com.example.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -192,22 +198,22 @@ fun GenziiTopBar(
           tint = MaterialTheme.colorScheme.onBackground
         )
         if (unreadCount > 0) {
-          val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "notif_pulse")
+          val infiniteTransition = rememberInfiniteTransition(label = "notif_pulse")
           val pulseScale by infiniteTransition.animateFloat(
             initialValue = 0.85f,
             targetValue = 1.35f,
-            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-              animation = androidx.compose.animation.core.tween(durationMillis = 800, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-              repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            animationSpec = infiniteRepeatable(
+              animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+              repeatMode = RepeatMode.Reverse
             ),
             label = "notif_scale"
           )
           val pulseAlpha by infiniteTransition.animateFloat(
             initialValue = 0.85f,
             targetValue = 1.0f,
-            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-              animation = androidx.compose.animation.core.tween(durationMillis = 800, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-              repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            animationSpec = infiniteRepeatable(
+              animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+              repeatMode = RepeatMode.Reverse
             ),
             label = "notif_alpha"
           )
@@ -217,7 +223,7 @@ fun GenziiTopBar(
               .align(Alignment.TopEnd)
               .offset(x = (-7).dp, y = 7.dp)
               .size(9.dp)
-              .androidx.compose.ui.graphics.graphicsLayer(
+              .graphicsLayer(
                 scaleX = pulseScale,
                 scaleY = pulseScale,
                 alpha = pulseAlpha

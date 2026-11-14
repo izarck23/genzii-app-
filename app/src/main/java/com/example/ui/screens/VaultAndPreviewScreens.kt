@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -99,6 +100,12 @@ fun VaultScreen(
   var selectedDocIds by remember { mutableStateOf(setOf<String>()) }
   var showBatchDeleteConfirm by remember { mutableStateOf(false) }
   var showBatchMoveDialog by remember { mutableStateOf(false) }
+  var showBatchCategoryDialog by remember { mutableStateOf(false) }
+  var showDocCategoryPicker by remember { mutableStateOf<DocumentItem?>(null) }
+
+  // Category filter state
+  var selectedCategoryFilter by remember { mutableStateOf("All") }
+  val categoryFilters = listOf("All", "Academic", "Personal", "Legal", "Research", "Financial")
 
   // Cancel multi-selection on system back press
   BackHandler(enabled = isSelectionMode) {
@@ -119,6 +126,7 @@ fun VaultScreen(
           fileType = fileInfo.fileType,
           content = fileInfo.content,
           folder = "Personal",
+          category = if (selectedCategoryFilter != "All") selectedCategoryFilter else "Academic",
           localFilePath = fileInfo.localFilePath,
           uriString = fileInfo.uriString,
           pageCount = fileInfo.pageCount
@@ -129,7 +137,7 @@ fun VaultScreen(
 
   val filters = listOf("All Files", "Documents", "Images", "Notes")
 
-  val filteredDocuments = remember(documents, searchQuery, selectedFilter, sortOrder) {
+  val filteredDocuments = remember(documents, searchQuery, selectedFilter, selectedCategoryFilter, sortOrder) {
     val filtered = documents.filter { doc ->
       val matchesQuery = searchQuery.isBlank() || doc.name.contains(searchQuery, ignoreCase = true) || doc.folder.contains(searchQuery, ignoreCase = true)
       val matchesFilter = when (selectedFilter) {
@@ -138,7 +146,8 @@ fun VaultScreen(
         "Notes" -> doc.type == FileType.TXT
         else -> true
       }
-      matchesQuery && matchesFilter
+      val matchesCategory = selectedCategoryFilter == "All" || doc.category.equals(selectedCategoryFilter, ignoreCase = true)
+      matchesQuery && matchesFilter && matchesCategory
     }
     when (sortOrder) {
       DocumentSortOrder.DATE_NEWEST -> filtered.sortedByDescending { it.createdAt }
@@ -223,6 +232,18 @@ fun VaultScreen(
                 Icon(
                   imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                   contentDescription = "Move selected",
+                  tint = if (selectedDocIds.isNotEmpty()) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+              }
+
+              IconButton(
+                onClick = { showBatchCategoryDialog = true },
+                enabled = selectedDocIds.isNotEmpty(),
+                modifier = Modifier.testTag("batch_label_button")
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Label,
+                  contentDescription = "Label selected",
                   tint = if (selectedDocIds.isNotEmpty()) GenziiPurple else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                 )
               }
@@ -707,6 +728,60 @@ fun VaultScreen(
       }
     }
 
+      // Category Filter Chips
+      item {
+        LazyRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          contentPadding = PaddingValues(vertical = 2.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("vault_category_filter_row")
+        ) {
+          items(categoryFilters) { cat ->
+            val isSelected = selectedCategoryFilter == cat
+            val (badgeBg, badgeText) = when (cat.lowercase()) {
+              "academic" -> Color(0xFFE8EAF6) to Color(0xFF3949AB)
+              "personal" -> Color(0xFFE0F2F1) to Color(0xFF00897B)
+              "legal" -> Color(0xFFFFF3E0) to Color(0xFFE65100)
+              "research" -> Color(0xFFEDE7F6) to Color(0xFF5E35B1)
+              "financial" -> Color(0xFFE8F5E9) to Color(0xFF2E7D32)
+              else -> GenziiPurpleContainer to GenziiPurple
+            }
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isSelected) GenziiPurple else MaterialTheme.colorScheme.surface,
+              border = BorderStroke(1.dp, if (isSelected) GenziiPurple else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { selectedCategoryFilter = cat }
+                .testTag("category_filter_$cat")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                if (cat != "All") {
+                  Box(
+                    modifier = Modifier
+                      .size(8.dp)
+                      .clip(CircleShape)
+                      .background(if (isSelected) GenziiWhite else badgeText)
+                  )
+                }
+                Text(
+                  text = cat,
+                  color = if (isSelected) GenziiWhite else MaterialTheme.colorScheme.onSurface,
+                  fontFamily = PoppinsFontFamily,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  fontSize = 11.5.sp
+                )
+              }
+            }
+          }
+        }
+      }
+
       // File Items List
       if (filteredDocuments.isEmpty()) {
         item {
@@ -755,6 +830,7 @@ fun VaultScreen(
             },
             onClick = { onOpenDocument(doc.id) },
             onStarClick = { GenziiRepository.toggleStar(doc.id) },
+            onChangeCategoryClick = { showDocCategoryPicker = doc },
             onDeleteClick = { GenziiRepository.deleteDocument(doc.id) }
           )
         }
@@ -925,7 +1001,144 @@ fun VaultScreen(
         }
       )
     }
+
+    // Single Document Category Picker Dialog
+    showDocCategoryPicker?.let { docToLabel ->
+      SelectCategoryDialog(
+        title = "Label \"${docToLabel.displayName}\"",
+        selectedCategory = docToLabel.category,
+        onDismiss = { showDocCategoryPicker = null },
+        onCategorySelected = { newCat ->
+          GenziiRepository.updateDocumentCategory(docToLabel.id, newCat)
+          showDocCategoryPicker = null
+          Toast.makeText(context, "Labeled as '$newCat'", Toast.LENGTH_SHORT).show()
+        }
+      )
+    }
+
+    // Batch Category Dialog
+    if (showBatchCategoryDialog) {
+      SelectCategoryDialog(
+        title = "Label ${selectedDocIds.size} ${if (selectedDocIds.size == 1) "item" else "items"}",
+        selectedCategory = "Academic",
+        onDismiss = { showBatchCategoryDialog = false },
+        onCategorySelected = { newCat ->
+          val count = selectedDocIds.size
+          GenziiRepository.batchUpdateCategory(selectedDocIds, newCat)
+          selectedDocIds = emptySet()
+          isSelectionMode = false
+          showBatchCategoryDialog = false
+          Toast.makeText(context, "Labeled $count items as '$newCat'", Toast.LENGTH_SHORT).show()
+        }
+      )
+    }
   }
+}
+
+@Composable
+fun SelectCategoryDialog(
+  title: String,
+  selectedCategory: String,
+  onDismiss: () -> Unit,
+  onCategorySelected: (String) -> Unit
+) {
+  val categories = listOf(
+    "Academic" to ("Academic & Scholarly" to Color(0xFF3949AB)),
+    "Personal" to ("Personal & Private" to Color(0xFF00897B)),
+    "Legal" to ("Legal & Contracts" to Color(0xFFE65100)),
+    "Research" to ("Research & Scientific" to Color(0xFF5E35B1)),
+    "Financial" to ("Financial & Statements" to Color(0xFF2E7D32))
+  )
+  var currentSelection by remember { mutableStateOf(selectedCategory) }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Default.Label, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text = title, fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+      }
+    },
+    text = {
+      Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          text = "Choose an organization label:",
+          fontSize = 12.sp,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        categories.forEach { (catName, pair) ->
+          val (subtitle, color) = pair
+          val isCurrent = currentSelection.equals(catName, ignoreCase = true)
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (isCurrent) GenziiPurpleContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            border = if (isCurrent) BorderStroke(1.5.dp, GenziiPurple) else null,
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(12.dp))
+              .clickable { currentSelection = catName }
+              .testTag("category_option_$catName")
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(14.dp)
+                  .clip(CircleShape)
+                  .background(color)
+              )
+              Spacer(modifier = Modifier.width(12.dp))
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = catName,
+                  fontFamily = PoppinsFontFamily,
+                  fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                  fontSize = 13.5.sp,
+                  color = if (isCurrent) GenziiPurple else MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                  text = subtitle,
+                  fontSize = 11.sp,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+              }
+              if (isCurrent) {
+                Icon(
+                  imageVector = Icons.Default.Check,
+                  contentDescription = "Selected",
+                  tint = GenziiPurple,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = { onCategorySelected(currentSelection) },
+        colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple),
+        modifier = Modifier.testTag("confirm_select_category_button")
+      ) {
+        Text("Save Label")
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Cancel")
+      }
+    }
+  )
 }
 
 @Composable
@@ -1168,6 +1381,7 @@ fun VaultFileRow(
   onLongClick: () -> Unit = {},
   onClick: () -> Unit,
   onStarClick: () -> Unit,
+  onChangeCategoryClick: () -> Unit = {},
   onDeleteClick: () -> Unit
 ) {
   var showMenu by remember { mutableStateOf(false) }
@@ -1239,6 +1453,42 @@ fun VaultFileRow(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = when (doc.category.lowercase()) {
+              "academic" -> Color(0xFFE8EAF6)
+              "personal" -> Color(0xFFE0F2F1)
+              "legal" -> Color(0xFFFFF3E0)
+              "research" -> Color(0xFFEDE7F6)
+              "financial" -> Color(0xFFE8F5E9)
+              else -> GenziiPurpleContainer
+            },
+            modifier = Modifier
+              .clip(RoundedCornerShape(6.dp))
+              .clickable { onChangeCategoryClick() }
+              .testTag("doc_category_badge_${doc.id}")
+          ) {
+            Text(
+              text = doc.category,
+              color = when (doc.category.lowercase()) {
+                "academic" -> Color(0xFF3949AB)
+                "personal" -> Color(0xFF00897B)
+                "legal" -> Color(0xFFE65100)
+                "research" -> Color(0xFF5E35B1)
+                "financial" -> Color(0xFF2E7D32)
+                else -> GenziiPurple
+              },
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.SemiBold,
+              fontFamily = PoppinsFontFamily,
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+            )
+          }
+          Text(
+            text = "•",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+          )
           Text(
             text = doc.sizeFormatted,
             fontFamily = PoppinsFontFamily,
@@ -1306,6 +1556,14 @@ fun VaultFileRow(
                 onClick()
               },
               leadingIcon = { Icon(Icons.Default.Visibility, contentDescription = null, tint = GenziiPurple) }
+            )
+            DropdownMenuItem(
+              text = { Text("Label Category", fontFamily = PoppinsFontFamily) },
+              onClick = {
+                showMenu = false
+                onChangeCategoryClick()
+              },
+              leadingIcon = { Icon(Icons.Default.Label, contentDescription = null, tint = GenziiPurple) }
             )
             DropdownMenuItem(
               text = { Text("Delete", fontFamily = PoppinsFontFamily, color = GenziiError) },
@@ -1424,6 +1682,7 @@ fun FilePreviewScreen(
   var showDeleteDialog by remember { mutableStateOf(false) }
   var showShareToast by remember { mutableStateOf(false) }
   var isImageZoomed by remember { mutableStateOf(false) }
+  var showCategoryDialog by remember { mutableStateOf(false) }
 
   val context = LocalContext.current
   val coroutineScope = rememberCoroutineScope()
@@ -1765,6 +2024,55 @@ fun FilePreviewScreen(
               }
             }
             DetailRow(title = "Folder", value = currentDoc.folder)
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "Category / Label",
+                fontFamily = PoppinsFontFamily,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = when (currentDoc.category.lowercase()) {
+                  "academic" -> Color(0xFFE8EAF6)
+                  "personal" -> Color(0xFFE0F2F1)
+                  "legal" -> Color(0xFFFFF3E0)
+                  "research" -> Color(0xFFEDE7F6)
+                  "financial" -> Color(0xFFE8F5E9)
+                  else -> GenziiPurpleContainer
+                },
+                modifier = Modifier
+                  .clip(RoundedCornerShape(8.dp))
+                  .clickable { showCategoryDialog = true }
+                  .testTag("preview_change_category_badge")
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                  Icon(Icons.Default.Label, contentDescription = null, tint = GenziiPurple, modifier = Modifier.size(12.dp))
+                  Text(
+                    text = "${currentDoc.category} ✎",
+                    color = when (currentDoc.category.lowercase()) {
+                      "academic" -> Color(0xFF3949AB)
+                      "personal" -> Color(0xFF00897B)
+                      "legal" -> Color(0xFFE65100)
+                      "research" -> Color(0xFF5E35B1)
+                      "financial" -> Color(0xFF2E7D32)
+                      else -> GenziiPurple
+                    },
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = PoppinsFontFamily
+                  )
+                }
+              }
+            }
             DetailRow(title = "File Size", value = currentDoc.sizeFormatted)
             DetailRow(title = "File Format", value = currentDoc.type.name)
             DetailRow(title = "Last Modified", value = currentDoc.updatedAt)
@@ -1832,6 +2140,19 @@ fun FilePreviewScreen(
           Button(onClick = { showShareToast = false }, colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)) {
             Text("OK")
           }
+        }
+      )
+    }
+
+    if (showCategoryDialog) {
+      SelectCategoryDialog(
+        title = "Change Document Label",
+        selectedCategory = currentDoc.category,
+        onDismiss = { showCategoryDialog = false },
+        onCategorySelected = { newCat ->
+          GenziiRepository.updateDocumentCategory(currentDoc.id, newCat)
+          showCategoryDialog = false
+          Toast.makeText(context, "Category updated to '$newCat'", Toast.LENGTH_SHORT).show()
         }
       )
     }

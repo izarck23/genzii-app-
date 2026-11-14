@@ -60,10 +60,13 @@ fun HomeScreen(
   val documents by GenziiRepository.documents.collectAsState()
   val notifications by GenziiRepository.notifications.collectAsState()
   val unreadNotifs = remember(notifications) { notifications.count { it.isUnread } }
+  val isWritingToolsUnlocked by GenziiRepository.isWritingToolsUnlockedThisSession.collectAsState()
 
   var showUploadOptionsDialog by remember { mutableStateOf(false) }
   var isUploading by remember { mutableStateOf(false) }
   var showRewardedAdDialog by remember { mutableStateOf(false) }
+  var showWritingToolsAdPrompt by remember { mutableStateOf(false) }
+  var showRewardedAdForWriting by remember { mutableStateOf(false) }
 
   // File Picker Launcher for .pdf, .docx, .txt
   val filePickerLauncher = rememberLauncherForActivityResult(
@@ -113,9 +116,10 @@ fun HomeScreen(
     floatingActionButton = {
       FloatingActionButton(
         onClick = { showUploadOptionsDialog = true },
-        containerColor = GenziiPurple,
-        contentColor = GenziiWhite,
+        containerColor = Color(0xFFD97706),
+        contentColor = Color.White,
         shape = CircleShape,
+        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 10.dp),
         modifier = Modifier.testTag("dashboard_fab_upload")
       ) {
         Icon(
@@ -156,101 +160,151 @@ fun HomeScreen(
         }
       }
 
-      // Production Release Workspace Highlights & Rewarded Bonus Card
+      // Production Release Workspace Highlights & Rewarded Bonus Card with Golden Executive Design
       item {
         Card(
           modifier = Modifier.fillMaxWidth(),
           shape = RoundedCornerShape(18.dp),
-          colors = CardDefaults.cardColors(containerColor = GenziiPurple),
-          elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+          colors = CardDefaults.cardColors(containerColor = Color(0xFF16130D)),
+          border = BorderStroke(
+            1.5.dp,
+            Brush.linearGradient(
+              listOf(Color(0xFFFFD700), Color(0xFFF59E0B), Color(0xFFB45309))
+            )
+          ),
+          elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
         ) {
-          Column(modifier = Modifier.padding(18.dp)) {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                  modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(GenziiWhite.copy(alpha = 0.2f)),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    tint = GenziiWhite,
-                    modifier = Modifier.size(20.dp)
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .background(
+                Brush.linearGradient(
+                  colors = listOf(
+                    Color(0xFF261E0E),
+                    Color(0xFF1A1408),
+                    Color(0xFF130F07)
                   )
+                )
+              )
+          ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                  Box(
+                    modifier = Modifier
+                      .size(38.dp)
+                      .clip(CircleShape)
+                      .background(
+                        Brush.linearGradient(
+                          listOf(Color(0xFFFFD700), Color(0xFFF59E0B))
+                        )
+                      ),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Icon(
+                      imageVector = Icons.Filled.WorkspacePremium,
+                      contentDescription = null,
+                      tint = Color(0xFF1E1402),
+                      modifier = Modifier.size(22.dp)
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Text(
+                        text = "Executive Workspace",
+                        color = Color(0xFFFFE082),
+                        fontFamily = PoppinsFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.5.sp
+                      )
+                      Spacer(modifier = Modifier.width(4.dp))
+                      Text(
+                        text = if (userProfile.tier != SubscriptionTier.FREE) "VIP" else "FREE",
+                        color = if (userProfile.tier != SubscriptionTier.FREE) Color(0xFFFFD700) else Color(0xFFB0BEC5),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 10.sp
+                      )
+                    }
+                    Text(
+                      text = "${userProfile.checksLeft} checks available • ${userProfile.tier.name} Plan",
+                      color = Color(0xFFD4AF37).copy(alpha = 0.85f),
+                      fontSize = 11.5.sp
+                    )
+                  }
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                  Text(
-                    text = "Workspace & Security Hub",
-                    color = GenziiWhite,
-                    fontFamily = PoppinsFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                  )
-                  Text(
-                    text = "${userProfile.checksLeft} checks available • ${userProfile.tier.name} Plan",
-                    color = GenziiPurpleSoft,
-                    fontSize = 12.sp
-                  )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                  Button(
+                    onClick = onNavigateToUpgrade,
+                    colors = ButtonDefaults.buttonColors(
+                      containerColor = Color(0xFFFFD700),
+                      contentColor = Color(0xFF1E1402)
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("home_upgrade_button")
+                  ) {
+                    Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                      text = "VIP • KES 100",
+                      fontFamily = PoppinsFontFamily,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 11.5.sp
+                    )
+                  }
+                  IconButton(
+                    onClick = { showRewardedAdDialog = true },
+                    modifier = Modifier
+                      .size(36.dp)
+                      .clip(CircleShape)
+                      .background(Color(0xFF332712))
+                  ) {
+                    Icon(
+                      Icons.Default.CardGiftcard,
+                      contentDescription = "Earn +10 Scans",
+                      tint = Color(0xFFFFD700),
+                      modifier = Modifier.size(18.dp)
+                    )
+                  }
                 }
               }
 
-              Button(
-                onClick = { showRewardedAdDialog = true },
-                colors = ButtonDefaults.buttonColors(
-                  containerColor = GenziiWhite,
-                  contentColor = GenziiPurple
-                ),
-                shape = RoundedCornerShape(20.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+              Spacer(modifier = Modifier.height(12.dp))
+
+              LinearProgressIndicator(
+                progress = { (userProfile.checksLeft.toFloat() / userProfile.totalChecks).coerceIn(0f, 1f) },
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(6.dp)
+                  .clip(RoundedCornerShape(3.dp)),
+                color = Color(0xFFFFD700),
+                trackColor = Color(0xFF4A3B18)
+              )
+
+              Spacer(modifier = Modifier.height(6.dp))
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
               ) {
-                Icon(Icons.Default.CardGiftcard, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                  text = "+10 Free",
-                  fontFamily = PoppinsFontFamily,
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 12.sp
+                  text = "Lipa na M-Pesa & PayPal • Unlimited Vault",
+                  color = Color(0xFFD4AF37).copy(alpha = 0.75f),
+                  fontSize = 10.5.sp
+                )
+                Text(
+                  text = "${userProfile.checksLeft} / ${userProfile.totalChecks} Scans",
+                  color = Color(0xFFFFE082),
+                  fontSize = 10.5.sp,
+                  fontWeight = FontWeight.Medium
                 )
               }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            LinearProgressIndicator(
-              progress = { (userProfile.checksLeft.toFloat() / userProfile.totalChecks).coerceIn(0f, 1f) },
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
-              color = GenziiWhite,
-              trackColor = GenziiWhite.copy(alpha = 0.25f)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-              Text(
-                text = "Watch 5s test ad to add +10 bonus scans",
-                color = GenziiPurpleSoft,
-                fontSize = 11.sp
-              )
-              Text(
-                text = "${userProfile.checksLeft} / ${userProfile.totalChecks}",
-                color = GenziiWhite,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-              )
             }
           }
         }
@@ -296,7 +350,13 @@ fun HomeScreen(
             QuickActionButton(
               label = "AI Writer",
               icon = Icons.Filled.EditNote,
-              onClick = onNavigateToAi
+              onClick = {
+                if (userProfile.tier != SubscriptionTier.FREE || isWritingToolsUnlocked) {
+                  onNavigateToAi()
+                } else {
+                  showWritingToolsAdPrompt = true
+                }
+              }
             )
             QuickActionButton(
               label = "Check",
@@ -309,8 +369,8 @@ fun HomeScreen(
               onClick = onNavigateToVault
             )
             QuickActionButton(
-              label = "Tools",
-              icon = Icons.Filled.GridView,
+              label = "PDF Tools",
+              icon = Icons.Filled.PictureAsPdf,
               onClick = onNavigateToTools
             )
           }
@@ -500,31 +560,7 @@ fun HomeScreen(
               }
             }
 
-            // Option 3: OCR Document Scanner (CamScanner)
-            Card(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                  showUploadOptionsDialog = false
-                  onNavigateToOcr()
-                },
-              colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-              Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Icon(Icons.Default.DocumentScanner, contentDescription = null, tint = GenziiPurple)
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                  Text("OCR Document Scanner", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                  Text("Scan documents with Camera, Auto Edge & ML Kit OCR", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-              }
-            }
-
-            // Option 4: PDF Tools Suite
+            // Option 3: PDF Utilities & Scanner Suite
             Card(
               modifier = Modifier
                 .fillMaxWidth()
@@ -542,8 +578,23 @@ fun HomeScreen(
                 Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GenziiPurple)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                  Text("PDF Utilities Suite", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                  Text("Merge, Split, Compress, Convert & Rotate documents", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("PDF Utilities & OCR Suite", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                      shape = RoundedCornerShape(4.dp),
+                      color = Color(0xFFFFD700)
+                    ) {
+                      Text(
+                        text = "PREMIUM",
+                        color = Color(0xFF1E1402),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                      )
+                    }
+                  }
+                  Text("Merge, Split, Compress, Convert & OCR Document Scanner", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
               }
             }
@@ -564,6 +615,61 @@ fun HomeScreen(
           showRewardedAdDialog = false
           coroutineScope.launch {
             snackbarHostState.showSnackbar("Success! Earned +$scans Originality Scans & +$credits AI Credits")
+          }
+        }
+      )
+    }
+
+    // Rewarded Ad Prompt for AI Writing Tools
+    if (showWritingToolsAdPrompt) {
+      AlertDialog(
+        onDismissRequest = { showWritingToolsAdPrompt = false },
+        title = {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFD97706))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Unlock AI Writing Tools", fontFamily = PoppinsFontFamily, fontWeight = FontWeight.Bold)
+          }
+        },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Smart Rewrite Assistant, Citation Checker, and Document Comparison are premium AI tools.")
+            Text("Watch a short sponsored video to unlock all writing tools for your current session, or subscribe to VIP for unlimited ad-free access (KES 100/wk).", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              showWritingToolsAdPrompt = false
+              showRewardedAdForWriting = true
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = GenziiPurple)
+          ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Watch Video (Unlock)")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = {
+            showWritingToolsAdPrompt = false
+            onNavigateToUpgrade()
+          }) {
+            Text("Upgrade VIP (KES 100)", color = Color(0xFFD97706), fontWeight = FontWeight.Bold)
+          }
+        }
+      )
+    }
+
+    if (showRewardedAdForWriting) {
+      GoogleTestRewardedAdDialog(
+        onDismiss = { showRewardedAdForWriting = false },
+        onRewardEarned = { _, _ ->
+          showRewardedAdForWriting = false
+          GenziiRepository.unlockWritingToolsForSession()
+          coroutineScope.launch {
+            snackbarHostState.showSnackbar("AI Writing Tools unlocked for this session!")
+            onNavigateToAi()
           }
         }
       )

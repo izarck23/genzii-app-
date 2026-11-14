@@ -253,6 +253,7 @@ object GenziiRepository {
     name: String,
     content: String,
     folder: String = "Personal",
+    category: String = "Academic",
     type: FileType = FileType.PDF,
     localFilePath: String? = null,
     uriString: String? = null,
@@ -268,6 +269,7 @@ object GenziiRepository {
       sizeFormatted = sizeStr,
       type = type,
       folder = folder,
+      category = category.ifBlank { "Academic" },
       updatedAt = "Just now",
       originalityScore = null,
       isEncrypted = true,
@@ -282,6 +284,37 @@ object GenziiRepository {
     _userProfile.update { it.copy(docsCount = it.docsCount + 1) }
     persistDocumentChange(newDoc)
     return newDoc
+  }
+
+  fun updateDocumentCategory(id: String, newCategory: String) {
+    val clean = newCategory.trim().ifBlank { "Academic" }
+    var updated: DocumentItem? = null
+    _documents.update { list ->
+      list.map {
+        if (it.id == id) {
+          val doc = it.copy(category = clean, updatedAt = "Just now")
+          updated = doc
+          doc
+        } else it
+      }
+    }
+    updated?.let { persistDocumentChange(it) }
+  }
+
+  fun batchUpdateCategory(ids: Set<String>, newCategory: String) {
+    if (ids.isEmpty()) return
+    val clean = newCategory.trim().ifBlank { "Academic" }
+    val updatedList = mutableListOf<DocumentItem>()
+    _documents.update { list ->
+      list.map { doc ->
+        if (doc.id in ids) {
+          val updated = doc.copy(category = clean, updatedAt = "Just now")
+          updatedList.add(updated)
+          updated
+        } else doc
+      }
+    }
+    updatedList.forEach { persistDocumentChange(it) }
   }
 
   fun deleteDocument(id: String) {
@@ -458,6 +491,7 @@ object GenziiRepository {
     fileType: FileType,
     content: String,
     folder: String = "Research Papers",
+    category: String = "Academic",
     localFilePath: String? = null,
     uriString: String? = null,
     pageCount: Int = 1,
@@ -469,6 +503,7 @@ object GenziiRepository {
       sizeFormatted = sizeFormatted,
       type = fileType,
       folder = folder,
+      category = category.ifBlank { "Academic" },
       updatedAt = "Just now",
       originalityScore = null,
       isEncrypted = true,
@@ -645,6 +680,8 @@ object GenziiRepository {
       )
     }
   }
+
+  fun getSavedGeminiApiKey(): String = _userProfile.value.customApiKey
 
   fun setPermissionsOnboardingCompleted(completed: Boolean = true) {
     _userProfile.update { it.copy(hasCompletedPermissionsOnboarding = completed) }

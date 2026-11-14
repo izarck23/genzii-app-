@@ -4,12 +4,28 @@ enum class FileType {
   PDF, DOCX, PPTX, TXT, IMAGE, AUDIO, OTHER
 }
 
+enum class DocumentCategory(val label: String, val colorHex: Long) {
+  ACADEMIC("Academic", 0xFF6366F1),
+  PERSONAL("Personal", 0xFF10B981),
+  LEGAL("Legal", 0xFFF59E0B),
+  RESEARCH("Research", 0xFF0284C7),
+  FINANCIAL("Financial", 0xFFEC4899);
+
+  companion object {
+    val ALL_LABELS = listOf("Academic", "Personal", "Legal", "Research", "Financial")
+    fun fromLabel(label: String?): DocumentCategory {
+      return entries.find { it.label.equals(label, ignoreCase = true) } ?: ACADEMIC
+    }
+  }
+}
+
 data class DocumentItem(
   val id: String,
   val name: String,
   val sizeFormatted: String = "0 B",
   val type: FileType,
   val folder: String = "Vault",
+  val category: String = "Academic",
   val updatedAt: String = "Just now",
   val originalityScore: Int? = null,
   val isEncrypted: Boolean = true,
